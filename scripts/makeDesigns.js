@@ -32,7 +32,7 @@ for (const [sampleName, sample] of Object.entries(SAMPLES)) {
     });
     const invoice = {
         ...buildInvoice({ order, seller, classification, vatCheck: sample.vatCheck }),
-        number: 'INV-2026-00001',
+        number: 'INV-2026-00000001',
         issueDate: '2026-10-08',
     };
 

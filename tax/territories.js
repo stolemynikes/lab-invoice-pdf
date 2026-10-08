@@ -1,7 +1,7 @@
 // Works out whether a delivery address is inside the EU VAT area.
 // For goods, VAT depends on where the package arrives, so we use the shipping address.
 
-export const EU_COUNTRIES = new Set([
+const EU_COUNTRIES = new Set([
     'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE',
     'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
 ]);

@@ -1,0 +1,43 @@
+# The invoice app + Cloudflare Tunnel on the Synology NAS.
+# Container Manager → Project → Create → choose this folder. Step by step: docs/synology-nl.md
+#
+# Nothing is opened in the router: the app has no ports on the network.
+# The only way in from the internet is through the Cloudflare Tunnel, which only reaches this app.
+
+services:
+  factuur-app:
+    build: .
+    container_name: factuur-app
+    restart: unless-stopped
+    # The DSM user "factuurapp" (see the guide). It may only use the invoice folder and this project folder.
+    user: "${PUID:-1026}:${PGID:-100}"
+    env_file: .env
+    environment:
+      # Paths inside the container. The real folders on the NAS are set under "volumes".
+      PORT: 8080
+      INVOICE_PDF_DIR: /facturen
+      DATABASE_PATH: /data/invoices.db
+      TZ: Europe/Amsterdam
+    volumes:
+      # PDFs + JSON copies: the shared folder "facturen" (with snapshots and Hyper Backup)
+      - /volume1/facturen:/facturen
+      # The invoice-number database: on the NAS's own disk, inside this project folder
+      - ./data:/data
+    networks:
+      - intern
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: factuur-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # From the Cloudflare dashboard (Zero Trust → Networks → Tunnels), put in .env
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - factuur-app
+    networks:
+      - intern
+
+networks:
+  intern:

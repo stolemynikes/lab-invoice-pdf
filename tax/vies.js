@@ -10,7 +10,7 @@ const VAT_PREFIXES = new Set([
 ]);
 
 // "de 123.456.789" -> { prefix: 'DE', number: '123456789' }
-export function splitVatId(raw) {
+function splitVatId(raw) {
     const cleaned = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const prefix = cleaned.slice(0, 2);
     const number = cleaned.slice(2);

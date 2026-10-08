@@ -73,8 +73,14 @@ export function buildInvoice({ order, seller, classification, vatCheck = null })
 
     return {
         orderId: String(order.id),
+        // The Shopify customer who may download this invoice (null for guest checkouts)
+        customerId: order.customer?.id ? String(order.customer.id) : null,
+        // Where the invoice is e-mailed to: the e-mail address of the order
+        customerEmail: order.email || order.contact_email || order.customer?.email || null,
         orderName: order.name,
-        orderDate: dutchDate(new Date(order.processed_at || order.created_at)),
+        orderDate: dutchDate(new Date(order.created_at)),
+        // Paid before delivery: the payment date is the date the law asks for on the invoice
+        paidDate: dutchDate(new Date(order.processed_at || order.created_at)),
         currency: order.currency,
         seller,
         buyer,
@@ -115,7 +121,7 @@ function buildLine({ description, sku, quantity, unitPrice, discount, taxLines =
 }
 
 // Totals per VAT rate (the law requires a breakdown per rate)
-function vatSummaryOf(lines) {
+export function vatSummaryOf(lines) {
     const byRate = new Map();
     for (const line of lines) {
         if (line.outsideVatScope) continue;

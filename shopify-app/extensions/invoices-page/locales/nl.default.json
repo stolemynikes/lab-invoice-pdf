@@ -1,0 +1,11 @@
+{
+  "heading": "Facturen",
+  "subheading": "Download de factuur en eventuele creditnota's van je bestellingen.",
+  "order": "Bestelling {{name}}",
+  "invoice": "Factuur {{number}}",
+  "creditNote": "Creditnota {{number}}",
+  "empty": "Je hebt nog geen bestellingen.",
+  "error": "De facturen konden niet worden geladen. Probeer het later opnieuw.",
+  "search": "Zoek op bestelnummer, datum of factuurnummer",
+  "noResults": "Geen facturen gevonden. Probeer een ander bestelnummer of een andere datum."
+}

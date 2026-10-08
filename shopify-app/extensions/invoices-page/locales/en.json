@@ -1,0 +1,11 @@
+{
+  "heading": "Invoices",
+  "subheading": "Download the invoice and any credit notes for your orders.",
+  "order": "Order {{name}}",
+  "invoice": "Invoice {{number}}",
+  "creditNote": "Credit note {{number}}",
+  "empty": "You have no orders yet.",
+  "error": "The invoices could not be loaded. Please try again later.",
+  "search": "Search by order number, date or invoice number",
+  "noResults": "No invoices found. Try another order number or date."
+}

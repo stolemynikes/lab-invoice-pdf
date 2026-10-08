@@ -1,14 +1,14 @@
 api_version = "2026-07"
 
 [[extensions]]
-name = "Factuur downloaden"
-handle = "invoice-download"
+name = "Facturen"
+handle = "invoices-page"
 type = "ui_extension"
 
-# The block on the order page in the customer account ("Bestelling")
+# An extra page in the customer account: a list of all invoices and credit notes
 [[extensions.targeting]]
-module = "./src/OrderInvoice.jsx"
-target = "customer-account.order-status.block.render"
+module = "./src/InvoicesPage.jsx"
+target = "customer-account.page.render"
 
 # Needed to ask the invoice app for the customer's own documents (see src/appUrl.js)
 [extensions.capabilities]

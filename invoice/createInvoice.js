@@ -4,6 +4,7 @@ import { checkVatId } from '../tax/vies.js';
 import { classifyOrder } from '../tax/classifyOrder.js';
 import { buildInvoice, findCustomerVatId } from './buildInvoice.js';
 import { renderInvoice } from '../pdf/renderInvoice.js';
+import { assertValidDocumentNumber } from './documentNumber.js';
 
 // The full flow for one Shopify order:
 // check VAT number -> work out VAT situation -> build invoice -> give it a number -> save the PDF
@@ -20,6 +21,21 @@ export async function createInvoiceForOrder(order, { store, seller, settings }) 
         return { invoice: existing, pdfPath, created: false };
     }
 
+    const invoiceData = await prepareInvoiceData(order, { seller, settings });
+
+    // Test orders get their own number series, so they never use up real invoice numbers
+    const series = order.test ? `TEST-${settings.series}` : settings.series;
+    const { invoice, created } = store.issue(invoiceData, { series, digits: settings.numberDigits });
+
+    const pdfPath = await savePdf(invoice, settings.pdfDir, settings.brand);
+    store.setPdfPath(invoice.number, pdfPath);
+
+    return { invoice, pdfPath, created };
+}
+
+// Everything for the invoice except the number: check the VAT number, work out the VAT situation, build the lines.
+// Also used by the restore script to rebuild an invoice from Shopify.
+export async function prepareInvoiceData(order, { seller, settings }) {
     const customerVatId = findCustomerVatId(order);
     const vatCheck = customerVatId
         ? await checkVatId(customerVatId, { online: settings.viesEnabled, requesterVatId: seller.vatId })
@@ -36,21 +52,18 @@ export async function createInvoiceForOrder(order, { store, seller, settings }) 
         vatCheck,
     });
 
-    const invoiceData = buildInvoice({ order, seller, classification, vatCheck });
-
-    // Test orders get their own number series, so they never use up real invoice numbers
-    const series = order.test ? `TEST-${settings.series}` : settings.series;
-    const { invoice, created } = store.issue(invoiceData, { series });
-
-    const pdfPath = await savePdf(invoice, settings.pdfDir, settings.brand);
-    store.setPdfPath(invoice.number, pdfPath);
-
-    return { invoice, pdfPath, created };
+    return buildInvoice({ order, seller, classification, vatCheck });
 }
 
 // Saves the PDF (and a JSON copy as backup) to e.g. <pdfDir>/2026/INV-2026-00001.pdf
-async function savePdf(invoice, pdfDir, brand) {
-    const folder = path.join(pdfDir, invoice.issueDate.slice(0, 4));
+// Used for both invoices and credit notes
+export async function savePdf(invoice, pdfDir, brand) {
+    // The number and year become folder and file names: only allow the strict format, never "../" or the like
+    assertValidDocumentNumber(invoice.number);
+    const year = String(invoice.issueDate).slice(0, 4);
+    if (!/^\d{4}$/.test(year)) throw new Error(`Not a valid issue date: ${JSON.stringify(invoice.issueDate)}`);
+
+    const folder = path.join(pdfDir, year);
     fs.mkdirSync(folder, { recursive: true });
 
     const pdfPath = path.join(folder, `${invoice.number}.pdf`);

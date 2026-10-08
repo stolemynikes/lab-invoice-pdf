@@ -2,5 +2,8 @@
   "heading": "Factuur",
   "number": "Factuurnummer {{number}}",
   "download": "Factuur downloaden (PDF)",
-  "notReady": "Je factuur wordt aangemaakt zodra de betaling is verwerkt."
+  "notReady": "Je factuur wordt aangemaakt zodra de betaling is verwerkt.",
+  "creditNote": "Creditnota {{number}} (PDF)",
+  "loading": "Factuur wordt geladen…",
+  "error": "De factuur kan nu niet worden geladen. Probeer het later opnieuw."
 }

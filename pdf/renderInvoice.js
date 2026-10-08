@@ -12,7 +12,7 @@ import { formatMoney, formatRate } from '../invoice/money.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FONTS = path.join(ROOT, 'assets', 'fonts');
-const DEFAULT_LOGO = path.join(ROOT, 'assets', 'logo.svg');
+const DEFAULT_LOGO = path.join(ROOT, 'assets', 'logo.png');
 
 // All design choices. The first value of each is the default.
 export const DESIGN_OPTIONS = {
@@ -46,17 +46,16 @@ const COLUMNS = [
 ];
 
 // Returns the PDF as a Buffer
-export function renderInvoice(invoice, { logo = DEFAULT_LOGO, color = NAVY, design = {} } = {}) {
+export function renderInvoice(invoice, { logo = DEFAULT_LOGO, logoText = '', color = NAVY, design = {} } = {}) {
     const style = resolveDesign(design);
     const doc = new PDFDocument({
         size: 'A4',
         margin: MARGIN,
         bufferPages: true,
-        info: { Title: `Invoice ${invoice.number}`, Author: invoice.seller.legalName },
+        info: { Title: `${documentTitle(invoice)} ${invoice.number}`, Author: invoice.seller.legalName },
     });
     doc.registerFont('normal', path.join(FONTS, 'OpenSans-Regular.ttf'));
     doc.registerFont('semibold', path.join(FONTS, 'OpenSans-SemiBold.ttf'));
-    doc.registerFont('bold', path.join(FONTS, 'OpenSans-Bold.ttf'));
 
     const chunks = [];
     doc.on('data', (chunk) => chunks.push(chunk));
@@ -71,6 +70,7 @@ export function renderInvoice(invoice, { logo = DEFAULT_LOGO, color = NAVY, desi
         invoice,
         style,
         logoPath: logoPath && fs.existsSync(logoPath) ? logoPath : null,
+        logoText,
         money: (cents) => formatMoney(cents, invoice.currency),
         // Logo colour for the title and the total when the accent is on, otherwise black
         strong: style.accent === 'navy' ? color : TEXT,
@@ -88,7 +88,7 @@ export function renderInvoice(invoice, { logo = DEFAULT_LOGO, color = NAVY, desi
 }
 
 // Fills in missing or unknown options with the defaults
-export function resolveDesign(design = {}) {
+function resolveDesign(design = {}) {
     const style = {};
     for (const [part, values] of Object.entries(DESIGN_OPTIONS)) {
         style[part] = values.includes(design[part]) ? design[part] : values[0];
@@ -104,7 +104,20 @@ function drawHeader(context) {
     return classicHeader(context);
 }
 
+// "Invoice" or "Credit note"
+function documentTitle(invoice) {
+    return invoice.kind === 'credit_note' ? 'Credit note' : 'Invoice';
+}
+
 function invoiceDetails(invoice) {
+    if (invoice.kind === 'credit_note') {
+        return [
+            ['Credit note number', invoice.number],
+            ['Credit note date', invoice.issueDate],
+            ['For invoice', invoice.originalInvoice.number],
+            ['Order', invoice.orderName],
+        ];
+    }
     return [
         ['Invoice number', invoice.number],
         ['Invoice date', invoice.issueDate],
@@ -113,34 +126,50 @@ function invoiceDetails(invoice) {
     ];
 }
 
-function drawLogo({ doc, logoPath, invoice }, x, y, align = 'left') {
+function drawLogo({ doc, logoPath, logoText, invoice }, x, y, align = 'left') {
     if (!logoPath) {
         doc.font('semibold').fontSize(15).fillColor(TEXT);
         doc.text(invoice.seller.legalName, align === 'center' ? MARGIN : x, y, { width: align === 'center' ? CONTENT_WIDTH : 260, align });
         return doc.y + 4;
     }
+    const isSvg = logoPath.toLowerCase().endsWith('.svg');
+
+    // Icon + name written in the website font (Open Sans), in the colour of the icon
+    if (isSvg && logoText) {
+        const svg = fs.readFileSync(logoPath, 'utf8');
+        const [, , svgWidth, svgHeight] = svgViewBox(svg);
+        const iconHeight = 42;
+        const iconWidth = (svgWidth / svgHeight) * iconHeight;
+        const gap = 10;
+        doc.font('semibold').fontSize(16);
+        const textWidth = doc.widthOfString(logoText);
+        const left = align === 'center' ? MARGIN + (CONTENT_WIDTH - iconWidth - gap - textWidth) / 2 : x;
+        const top = y - 8;
+
+        drawSvg(doc, svg, left, top, iconWidth, iconHeight);
+        const color = svg.match(/\bfill="(#[0-9a-fA-F]{3,6})"/)?.[1] || TEXT;
+        doc.fillColor(color).text(logoText, left + iconWidth + gap, top + iconHeight / 2 - 11, { lineBreak: false });
+        return top + iconHeight + 12;
+    }
+
     const width = 180;
     const left = align === 'center' ? MARGIN + (CONTENT_WIDTH - width) / 2 : x - 4;
 
-    if (logoPath.toLowerCase().endsWith('.svg')) {
+    if (isSvg) {
         drawSvg(doc, fs.readFileSync(logoPath, 'utf8'), left, y - 10, width, 56);
         return y + 54;
     }
 
-    // Cut off the bottom edge of the logo image (the website logo has a thin grey line there)
-    doc.save().rect(left, y - 10, width, 53).clip();
     doc.image(logoPath, left, y - 10, { fit: [width, 56], align: 'center' });
-    doc.restore();
     return y + 54;
 }
 
 // Draws a simple SVG logo (only <path> shapes) as sharp vector shapes, scaled to fit the box
 function drawSvg(doc, svg, x, y, maxWidth, maxHeight) {
-    const viewBox = svg.match(/viewBox="([\d.\s-]+)"/)?.[1].trim().split(/\s+/).map(Number);
-    const [, , svgWidth, svgHeight] = viewBox || [0, 0, Number(svg.match(/width="([\d.]+)/)?.[1]), Number(svg.match(/height="([\d.]+)/)?.[1])];
+    const [minX, minY, svgWidth, svgHeight] = svgViewBox(svg);
     const scale = Math.min(maxWidth / svgWidth, maxHeight / svgHeight);
 
-    doc.save().translate(x, y).scale(scale);
+    doc.save().translate(x, y).scale(scale).translate(-minX, -minY);
     for (const [, attributes] of svg.matchAll(/<path\b([^>]*)\/?>/g)) {
         const d = attributes.match(/\bd="([^"]+)"/)?.[1];
         if (!d) continue;
@@ -149,6 +178,12 @@ function drawSvg(doc, svg, x, y, maxWidth, maxHeight) {
         doc.path(d).fill(fill, rule);
     }
     doc.restore();
+}
+
+// [minX, minY, width, height] of an SVG
+function svgViewBox(svg) {
+    const viewBox = svg.match(/viewBox="([\d.\s-]+)"/)?.[1].trim().split(/\s+/).map(Number);
+    return viewBox || [0, 0, Number(svg.match(/width="([\d.]+)/)?.[1]), Number(svg.match(/height="([\d.]+)/)?.[1])];
 }
 
 function sellerAddress(invoice) {
@@ -161,7 +196,7 @@ function classicHeader(context) {
     doc.font('normal').fontSize(8.5).fillColor(GREY).text(sellerAddress(invoice).join('\n'), MARGIN, addressY, { width: 260 });
     const leftBottom = doc.y;
 
-    doc.font('semibold').fontSize(20).fillColor(strong).text('Invoice', MARGIN, MARGIN - 4, { width: CONTENT_WIDTH, align: 'right' });
+    doc.font('semibold').fontSize(20).fillColor(strong).text(documentTitle(invoice), MARGIN, MARGIN - 4, { width: CONTENT_WIDTH, align: 'right' });
     let y = MARGIN + 28;
     for (const [label, value] of invoiceDetails(invoice)) {
         doc.font('normal').fontSize(8.5).fillColor(GREY).text(label, MARGIN + 250, y, { width: 120, align: 'right' });
@@ -178,7 +213,7 @@ function centeredHeader(context) {
     doc.text(sellerAddress(invoice).join('  ·  '), MARGIN, y, { width: CONTENT_WIDTH, align: 'center' });
 
     y = doc.y + 18;
-    doc.font('semibold').fontSize(20).fillColor(strong).text('Invoice', MARGIN, y, { width: CONTENT_WIDTH, align: 'center' });
+    doc.font('semibold').fontSize(20).fillColor(strong).text(documentTitle(invoice), MARGIN, y, { width: CONTENT_WIDTH, align: 'center' });
     y = doc.y + 12;
 
     // The four invoice details side by side, between two thin lines
@@ -206,7 +241,7 @@ function panelHeader(context) {
     const top = MARGIN - 10;
     const height = 104;
     doc.roundedRect(x, top, width, height, 10).fill(FILL);
-    doc.font('semibold').fontSize(16).fillColor(strong).text('Invoice', x + 16, top + 12, { width: width - 32 });
+    doc.font('semibold').fontSize(16).fillColor(strong).text(documentTitle(invoice), x + 16, top + 12, { width: width - 32 });
     let y = top + 40;
     for (const [label, value] of invoiceDetails(invoice)) {
         doc.font('normal').fontSize(8.5).fillColor(GREY).text(label, x + 16, y, { width: 100 });
@@ -241,10 +276,10 @@ function addressBlock({ doc }, title, party, x, y) {
 function drawProductTable(context, y) {
     const { doc, invoice, style, money } = context;
     const rows = invoice.lines.map((line) => [
-        line.sku ? `${line.description}\nSKU ${line.sku}` : line.description,
+        line.description, // the SKU stays in the invoice data, but is not printed
         String(line.quantity),
         money(line.unitPriceNet),
-        line.discountNet ? `−${money(line.discountNet)}` : '',
+        discountText(line.discountNet, money),
         line.outsideVatScope ? 'n/a' : formatRate(line.vatRate),
         money(line.netTotal),
     ]);
@@ -385,14 +420,25 @@ function drawLegalNotes({ doc, invoice }, y) {
         y += height + 32;
     }
     doc.font('normal').fontSize(8.5).fillColor(GREY);
-    doc.text('Paid in full via our online store. Thank you for your order.', MARGIN, y, { width: CONTENT_WIDTH });
+    const closing =
+        invoice.kind === 'credit_note'
+            ? `${formatMoney(invoice.refundedAmount, invoice.currency)} was refunded on ${invoice.refundDate} to your original payment method.`
+            : `Paid in full on ${invoice.paidDate || invoice.issueDate} via our online store. Thank you for your order.`;
+    doc.text(closing, MARGIN, y, { width: CONTENT_WIDTH });
+}
+
+// Discounts reduce the price (shown with −). On a credit note the sign flips, because everything is negative.
+function discountText(discountNet, money) {
+    if (!discountNet) return '';
+    return discountNet > 0 ? `−${money(discountNet)}` : `+${money(-discountNet)}`;
 }
 
 // Company details at the bottom of every page (KvK, VAT number, bank...)
 function drawFooter({ doc, invoice }) {
     const seller = invoice.seller;
     const parts = [
-        `${seller.legalName}, statutair gevestigd te ${seller.registeredSeat}`,
+        // "Laboratoriumdiscounter is a trade name of HD Beverwijk Trading B.V., statutair gevestigd te ..."
+        `${seller.tradeName && seller.tradeName !== seller.legalName ? `${seller.tradeName} is a trade name of ` : ''}${seller.legalName}, statutair gevestigd te ${seller.registeredSeat}`,
         `KvK ${seller.kvkNumber}`,
         `VAT ${seller.vatId}`,
         seller.iban && `IBAN ${seller.iban}${seller.bic ? ` (BIC ${seller.bic})` : ''}`,

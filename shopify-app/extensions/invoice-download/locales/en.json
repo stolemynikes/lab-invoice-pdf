@@ -2,5 +2,8 @@
   "heading": "Invoice",
   "number": "Invoice number {{number}}",
   "download": "Download invoice (PDF)",
-  "notReady": "Your invoice will be available once the payment has been processed."
+  "notReady": "Your invoice will be available once the payment has been processed.",
+  "creditNote": "Credit note {{number}} (PDF)",
+  "loading": "Loading invoice…",
+  "error": "The invoice cannot be loaded right now. Please try again later."
 }
