@@ -9,7 +9,7 @@ export function invoicesRoute(store, { linkSecret = invoiceSettings.linkSecret }
     const router = express.Router();
     router.use(rateLimit({ max: 30 }));
 
-    // Customer downloads an invoice or credit note: /invoices/INV-2026-00000001/download?customer=..&expires=..&token=..
+    // Customer downloads an invoice or credit note: /invoices/INV-2026-1/download?customer=..&expires=..&token=..
     // The link must be valid, not expired, and made for the customer who owns the document.
     router.get('/:number/download', (req, res) => {
         const { number } = req.params;

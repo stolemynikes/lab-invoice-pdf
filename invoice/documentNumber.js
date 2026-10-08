@@ -1,5 +1,5 @@
 // The only allowed shape of an invoice or credit note number: SERIES-YEAR-DIGITS,
-// e.g. INV-2026-00000001, CN-2026-00000001, TEST-INV-2026-00000001.
+// e.g. INV-2026-1, CN-2026-12, TEST-INV-2026-1000 (no fixed length).
 // Numbers are also used as file names, so anything else (slashes, dots, spaces...) is refused.
 // That makes it impossible to write or read files outside the invoice folder with a crafted number.
 

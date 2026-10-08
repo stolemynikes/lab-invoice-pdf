@@ -5,8 +5,8 @@ import { dutchDate } from './money.js';
 import { assertValidDocumentNumber } from './documentNumber.js';
 
 // Gives out invoice and credit note numbers and keeps every issued document unchanged.
-// - Numbers have no gaps: INV-2026-00001, INV-2026-00002, ... (restarts every year)
-// - Credit notes have their own series: CN-2026-00001, ...
+// - Numbers have no gaps: INV-2026-1, INV-2026-2, ... (restarts every year, grows by itself: no fixed length)
+// - Credit notes have their own series: CN-2026-1, ...
 // - One invoice per order and one credit note per refund: if Shopify sends the same thing twice,
 //   you get the existing document back
 export class InvoiceStore {
@@ -95,13 +95,13 @@ export class InvoiceStore {
     }
 
     // Returns { invoice, created }. created = false when the order already had an invoice.
-    issue(invoiceData, { series = 'INV', digits = 5, now = new Date() } = {}) {
+    issue(invoiceData, { series = 'INV', now = new Date() } = {}) {
         return this.inTransaction(() => {
             const existing = this.findByOrder(invoiceData.orderId);
             if (existing) return { invoice: existing, created: false };
 
             const issueDate = dutchDate(now);
-            const invoice = { ...invoiceData, number: this.nextNumber(series, issueDate, digits), issueDate };
+            const invoice = { ...invoiceData, number: this.nextNumber(series, issueDate), issueDate };
             this.db
                 .prepare('INSERT INTO invoices (number, order_id, issue_date, data) VALUES (?, ?, ?, ?)')
                 .run(invoice.number, invoice.orderId, issueDate, JSON.stringify(invoice));
@@ -118,19 +118,19 @@ export class InvoiceStore {
 
     creditNotesForOrder(orderId) {
         return this.db
-            .prepare('SELECT data FROM credit_notes WHERE order_id = ? ORDER BY number')
+            .prepare('SELECT data FROM credit_notes WHERE order_id = ? ORDER BY rowid')
             .all(String(orderId))
             .map((row) => JSON.parse(row.data));
     }
 
     // Returns { creditNote, created }. created = false when the refund already had a credit note.
-    issueCreditNote(creditNoteData, { series = 'CN', digits = 5, now = new Date() } = {}) {
+    issueCreditNote(creditNoteData, { series = 'CN', now = new Date() } = {}) {
         return this.inTransaction(() => {
             const existing = this.findCreditNoteByRefund(creditNoteData.refundId);
             if (existing) return { creditNote: existing, created: false };
 
             const issueDate = dutchDate(now);
-            const creditNote = { ...creditNoteData, number: this.nextNumber(series, issueDate, digits), issueDate };
+            const creditNote = { ...creditNoteData, number: this.nextNumber(series, issueDate), issueDate };
             this.db
                 .prepare(
                     'INSERT INTO credit_notes (number, refund_id, order_id, invoice_number, issue_date, data) VALUES (?, ?, ?, ?, ?, ?)',
@@ -195,8 +195,8 @@ export class InvoiceStore {
     // Numbers of the e-mails that still have to be sent (optionally only for one order)
     pendingEmails(orderId = null) {
         const rows = orderId
-            ? this.db.prepare("SELECT number FROM email_queue WHERE status = 'pending' AND order_id = ? ORDER BY number").all(String(orderId))
-            : this.db.prepare("SELECT number FROM email_queue WHERE status = 'pending' ORDER BY number").all();
+            ? this.db.prepare("SELECT number FROM email_queue WHERE status = 'pending' AND order_id = ? ORDER BY rowid").all(String(orderId))
+            : this.db.prepare("SELECT number FROM email_queue WHERE status = 'pending' ORDER BY rowid").all();
         return rows.map((row) => row.number);
     }
 
@@ -231,7 +231,7 @@ export class InvoiceStore {
     // All invoices of one Shopify customer, newest first, each with its credit notes
     documentsForCustomer(customerId) {
         return this.db
-            .prepare("SELECT data FROM invoices WHERE json_extract(data, '$.customerId') = ? ORDER BY issue_date DESC, number DESC")
+            .prepare("SELECT data FROM invoices WHERE json_extract(data, '$.customerId') = ? ORDER BY issue_date DESC, rowid DESC")
             .all(String(customerId))
             .map((row) => {
                 const invoice = JSON.parse(row.data);
@@ -310,8 +310,9 @@ export class InvoiceStore {
 
     // ---------- helpers ----------
 
-    // Next number in a series, e.g. INV-2026-00003 (digits = how many digits after the year). Only call inside inTransaction().
-    nextNumber(series, issueDate, digits = 5) {
+    // Next number in a series, e.g. INV-2026-3. No leading zeros: the number simply gets longer (…-9, …-10, …-1000).
+    // Only call inside inTransaction().
+    nextNumber(series, issueDate) {
         const counterKey = `${series}-${issueDate.slice(0, 4)}`;
         const row = this.db.prepare('SELECT last_number FROM counters WHERE series = ?').get(counterKey);
         const next = (row?.last_number ?? 0) + 1;
@@ -320,7 +321,7 @@ export class InvoiceStore {
                 'INSERT INTO counters (series, last_number) VALUES (?, ?) ON CONFLICT(series) DO UPDATE SET last_number = excluded.last_number',
             )
             .run(counterKey, next);
-        return assertValidDocumentNumber(`${counterKey}-${String(next).padStart(digits, '0')}`);
+        return assertValidDocumentNumber(`${counterKey}-${next}`);
     }
 
     // Locks the database so two orders at the same moment can never get the same number

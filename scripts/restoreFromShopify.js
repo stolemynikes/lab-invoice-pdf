@@ -50,7 +50,7 @@ for (const document of backups.values()) {
     const better =
         !current ||
         (shopifyNumbers.has(document.number) && !shopifyNumbers.has(current.number)) ||
-        (shopifyNumbers.has(document.number) === shopifyNumbers.has(current.number) && document.number > current.number);
+        (shopifyNumbers.has(document.number) === shopifyNumbers.has(current.number) && sequenceOf(document.number) > sequenceOf(current.number));
     if (better) best.set(key, document);
 }
 
@@ -135,6 +135,11 @@ function isInStore(document) {
 
 function creditNoteInStore(number) {
     return store.hasDocument(number);
+}
+
+// "INV-2026-12" -> 12 (numbers have no fixed length, so compare them as numbers)
+function sequenceOf(number) {
+    return Number(String(number).split('-').pop());
 }
 
 function findJsonFiles(folder) {

@@ -25,7 +25,7 @@ export async function createCreditNoteForRefund(refund, order, { store, seller, 
 
     // Test orders get their own series, so they never use up real credit note numbers
     const series = order.test ? `TEST-${settings.creditSeries}` : settings.creditSeries;
-    const { creditNote, created } = store.issueCreditNote(creditNoteData, { series, digits: settings.numberDigits });
+    const { creditNote, created } = store.issueCreditNote(creditNoteData, { series });
 
     const pdfPath = await savePdf(creditNote, settings.pdfDir, settings.brand);
     store.setPdfPath(creditNote.number, pdfPath);

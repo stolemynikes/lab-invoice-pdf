@@ -25,11 +25,11 @@ Built for a Dutch B.V. that sells to consumers and businesses across Europe.
 3. The app checks the order:
    - **Where is it delivered?** Netherlands, another EU country, or outside the EU.
    - **Is it a business?** If the customer entered a VAT number, it is checked with the official EU service (VIES).
-4. The app gives the invoice the next number (`INV-2026-00000001`, `INV-2026-00000002`, ...).
+4. The app gives the invoice the next number (`INV-2026-1`, `INV-2026-2`, ... no fixed length: it simply gets longer, like the order numbers).
 5. The PDF is saved in the invoice folder (this can be the NAS).
 6. The invoice number is saved on the order in Shopify (as a safety net). The logged-in customer can download the invoice from their account.
 
-When (part of) an order is refunded, the same happens with a **credit note** (`CN-2026-00000001`, ...).
+When (part of) an order is refunded, the same happens with a **credit note** (`CN-2026-1`, ...).
 
 The invoice number is made **once**, at payment. Downloading the invoice only opens the saved PDF: it never makes a new number and never changes anything.
 
@@ -152,7 +152,6 @@ See [Going live: hosting](#going-live-hosting) and the [Go-live checklist](#go-l
 | `INVOICE_PDF_DIR` | Folder for the PDFs, e.g. `\\NAS\invoices` |
 | `DATABASE_PATH` | The invoice-number database. Keep it on a **local disk**, not on a network share |
 | `INVOICE_SERIES` / `CREDIT_NOTE_SERIES` | Number prefixes, default `INV` and `CN` |
-| `INVOICE_NUMBER_DIGITS` | Digits after the year (8 gives `INV-2026-00000001`). **Only change before the first real invoice** |
 | `VIES_ENABLED` | Check customer VAT numbers with the EU (`true`/`false`) |
 | `BRAND_LOGO` | Logo file: SVG (sharpest), PNG or JPG |
 | `BRAND_LOGO_TEXT` | Name written next to the logo icon in Open Sans. Leave empty if the logo file already contains the name |
@@ -323,8 +322,8 @@ It never overwrites anything and the numbering continues after the highest resto
 PDFs are saved per year, with a JSON copy of the data next to each one:
 
 ```
-\\NAS\invoices\2026\INV-2026-00000001.pdf
-\\NAS\invoices\2026\INV-2026-00000001.json
+\\NAS\invoices\2026\INV-2026-1.pdf
+\\NAS\invoices\2026\INV-2026-1.json
 ```
 
 - Dutch law requires keeping invoices for **7 years**, unchanged and readable.
@@ -341,7 +340,7 @@ PDFs are saved per year, with a JSON copy of the data next to each one:
 - [ ] **Btw is set up in Shopify** (Settings → Taxes and duties): Netherlands, and OSS for EU countries
 - [ ] Test order with VAT checked: the invoice shows the right rate and amounts
 - [ ] Test refund checked: the credit note matches
-- [ ] `INVOICE_NUMBER_DIGITS` and the series are final (they cannot change after the first real invoice)
+- [ ] The series (`INVOICE_SERIES`, `CREDIT_NOTE_SERIES`) are final (they cannot change after the first real invoice)
 - [ ] App is hosted, `PUBLIC_URL` is set, both webhooks are registered
 - [ ] `src/appUrl.js` in both extensions has the app address, extensions are deployed and placed in the customer account
 - [ ] NAS protected: nothing open in the router, 2-step verification on DSM, snapshots + Hyper Backup (see Security)
@@ -392,7 +391,7 @@ A sent invoice may never be changed. For every refund the app makes a credit not
 
 ### Numbers
 
-- No gaps: `INV-2026-00000001`, `INV-2026-00000002`, ... Dashes and the prefix are fine; a **missing number** is a gap.
+- No gaps: `INV-2026-1`, `INV-2026-2`, ... (no fixed length, it grows by itself). Dashes and the prefix are fine; a **missing number** is a gap.
 - The series restarts every year.
 - Test orders use their own series (`TEST-INV`, `TEST-CN`, `DEMO`), so they never cause gaps.
 

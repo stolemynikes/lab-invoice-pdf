@@ -25,7 +25,7 @@ export async function createInvoiceForOrder(order, { store, seller, settings }) 
 
     // Test orders get their own number series, so they never use up real invoice numbers
     const series = order.test ? `TEST-${settings.series}` : settings.series;
-    const { invoice, created } = store.issue(invoiceData, { series, digits: settings.numberDigits });
+    const { invoice, created } = store.issue(invoiceData, { series });
 
     const pdfPath = await savePdf(invoice, settings.pdfDir, settings.brand);
     store.setPdfPath(invoice.number, pdfPath);
@@ -55,7 +55,7 @@ export async function prepareInvoiceData(order, { seller, settings }) {
     return buildInvoice({ order, seller, classification, vatCheck });
 }
 
-// Saves the PDF (and a JSON copy as backup) to e.g. <pdfDir>/2026/INV-2026-00001.pdf
+// Saves the PDF (and a JSON copy as backup) to e.g. <pdfDir>/2026/INV-2026-1.pdf
 // Used for both invoices and credit notes
 export async function savePdf(invoice, pdfDir, brand) {
     // The number and year become folder and file names: only allow the strict format, never "../" or the like

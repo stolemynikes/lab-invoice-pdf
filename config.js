@@ -37,8 +37,6 @@ export const invoiceSettings = {
     databasePath: env('DATABASE_PATH', './data/invoices.db'),
     series: env('INVOICE_SERIES', 'INV'),
     creditSeries: env('CREDIT_NOTE_SERIES', 'CN'),
-    // How many digits after the year: 8 -> INV-2026-00000001
-    numberDigits: Number(env('INVOICE_NUMBER_DIGITS', '8')),
     linkSecret: env('INVOICE_LINK_SECRET'),
     viesEnabled: env('VIES_ENABLED', 'true') === 'true',
     // Catch-up: orders from before this date never get an invoice (empty = the first day the app was used)

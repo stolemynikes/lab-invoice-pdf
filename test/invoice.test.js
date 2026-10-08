@@ -147,9 +147,9 @@ describe('invoice numbers', () => {
         const again = store.issue(draft, { now });
         const second = store.issue({ ...draft, orderId: '999' }, { now });
 
-        expect(first.invoice.number).toBe('INV-2026-00001');
-        expect(again).toMatchObject({ created: false, invoice: { number: 'INV-2026-00001' } });
-        expect(second.invoice.number).toBe('INV-2026-00002');
+        expect(first.invoice.number).toBe('INV-2026-1');
+        expect(again).toMatchObject({ created: false, invoice: { number: 'INV-2026-1' } });
+        expect(second.invoice.number).toBe('INV-2026-2');
         store.close();
     });
 
@@ -160,8 +160,8 @@ describe('invoice numbers', () => {
         const nextYear = store.issue({ ...draft, orderId: '2' }, { now: new Date('2027-01-01T12:00:00Z') });
         const test = store.issue({ ...draft, orderId: '3' }, { series: 'TEST-INV', now: new Date('2027-01-02T12:00:00Z') });
 
-        expect(nextYear.invoice.number).toBe('INV-2027-00001');
-        expect(test.invoice.number).toBe('TEST-INV-2027-00001');
+        expect(nextYear.invoice.number).toBe('INV-2027-1');
+        expect(test.invoice.number).toBe('TEST-INV-2027-1');
         store.close();
     });
 });
@@ -282,11 +282,11 @@ describe('credit notes', () => {
         const again = await createCreditNoteForRefund(refund, order, { store, seller, settings });
         const second = await createCreditNoteForRefund({ ...refund, id: 9902 }, order, { store, seller, settings });
 
-        expect(store.findByOrder(order.id).number).toMatch(/^INV-\d{4}-00001$/); // invoice made first
-        expect(first.creditNote.number).toMatch(/^CN-\d{4}-00001$/);
+        expect(store.findByOrder(order.id).number).toMatch(/^INV-\d{4}-1$/); // invoice made first
+        expect(first.creditNote.number).toMatch(/^CN-\d{4}-1$/);
         expect(first.creditNote.originalInvoice.number).toBe(store.findByOrder(order.id).number);
         expect(again.created).toBe(false);
-        expect(second.creditNote.number).toMatch(/^CN-\d{4}-00002$/);
+        expect(second.creditNote.number).toMatch(/^CN-\d{4}-2$/);
         expect(fs.readFileSync(first.pdfPath).subarray(0, 4).toString()).toBe('%PDF');
         expect(store.getPdfPath(first.creditNote.number)).toBe(first.pdfPath);
         expect(store.creditNotesForOrder(order.id)).toHaveLength(2);
@@ -295,17 +295,21 @@ describe('credit notes', () => {
 });
 
 describe('number length', () => {
-    it('can be set with the number of digits', () => {
+    it('has no fixed length: the number simply gets longer, and newest stays first', () => {
         const store = new InvoiceStore(path.join(tempDir(), 'test.db'));
-        const draft = invoiceFor('order-nl-consumer.json');
-        const { invoice } = store.issue(draft, { digits: 8, now: new Date('2026-10-08T12:00:00Z') });
-        expect(invoice.number).toBe('INV-2026-00000001');
+        const draft = { ...invoiceFor('order-nl-consumer.json'), customerId: '555' };
+        const now = new Date('2026-10-08T12:00:00Z');
+        const numbers = [];
+        for (let i = 1; i <= 11; i++) numbers.push(store.issue({ ...draft, orderId: String(i) }, { now }).invoice.number);
+        expect(numbers.slice(-3)).toEqual(['INV-2026-9', 'INV-2026-10', 'INV-2026-11']);
+        // Sorted by the order they were made, not as text ("INV-2026-10" would otherwise come before "INV-2026-9")
+        expect(store.documentsForCustomer('555').slice(0, 3).map((d) => d.invoice.number)).toEqual(['INV-2026-11', 'INV-2026-10', 'INV-2026-9']);
         store.close();
     });
 });
 
 describe('catch-up', () => {
-    const settings = (dir) => ({ pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', numberDigits: 8, viesEnabled: false });
+    const settings = (dir) => ({ pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', viesEnabled: false });
     const paidOrder = (overrides = {}) => ({ ...loadOrder('order-nl-consumer.json'), financial_status: 'paid', created_at: '2026-10-08T10:00:00+02:00', ...overrides });
 
     it('makes missing invoices and credit notes, and skips orders from before the start date', async () => {
@@ -325,7 +329,7 @@ describe('catch-up', () => {
         });
 
         expect(summary).toMatchObject({ invoices: 1, creditNotes: 1, skippedOld: 1, errors: [] });
-        expect(store.findByOrder(1).number).toMatch(/^INV-\d{4}-00000001$/);
+        expect(store.findByOrder(1).number).toMatch(/^INV-\d{4}-1$/);
         expect(store.findByOrder(2)).toBeNull();
         expect(store.findByOrder(3)).toBeNull();
         expect(saved).toEqual(['1']);
@@ -370,8 +374,8 @@ describe('restoring numbers', () => {
 
         expect(store.restoreDocument({ ...draft, orderId: 'a', number: 'INV-2026-00000041', issueDate: '2026-10-01' })).toBe(true);
         expect(store.restoreDocument({ ...draft, orderId: 'a', number: 'INV-2026-00000041', issueDate: '2026-10-01' })).toBe(false); // never twice
-        const next = store.issue({ ...draft, orderId: 'b' }, { digits: 8, now });
-        expect(next.invoice.number).toBe('INV-2026-00000042');
+        const next = store.issue({ ...draft, orderId: 'b' }, { now });
+        expect(next.invoice.number).toBe('INV-2026-42');
         store.close();
     });
 });
@@ -404,7 +408,7 @@ describe('customer account access', () => {
     it('only shows and downloads the documents of the logged-in customer', async () => {
         const dir = tempDir();
         const store = new InvoiceStore(path.join(dir, 'test.db'));
-        const settings = { pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', numberDigits: 8, viesEnabled: false };
+        const settings = { pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', viesEnabled: false };
         const order = (id, customerId) => ({ ...loadOrder('order-nl-consumer.json'), id, name: `#${id}`, financial_status: 'paid', customer: { id: customerId } });
         const mine = await createInvoiceForOrder(order(1, 555), { store, seller, settings });
         const theirs = await createInvoiceForOrder(order(2, 777), { store, seller, settings });
@@ -455,7 +459,7 @@ describe('attacks', () => {
     it('refuses crafted numbers, SQL and path tricks in download links', async () => {
         const dir = tempDir();
         const store = new InvoiceStore(path.join(dir, 'test.db'));
-        const settings = { pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', numberDigits: 8, viesEnabled: false };
+        const settings = { pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', viesEnabled: false };
         await createInvoiceForOrder({ ...loadOrder('order-nl-consumer.json'), customer: { id: 555 } }, { store, seller, settings });
         const { server, base } = await startApp(store);
 
@@ -572,7 +576,7 @@ describe('security check', () => {
 
 describe('e-mail', () => {
     const emailSettings = (dir) => ({
-        pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', numberDigits: 8, viesEnabled: false,
+        pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', viesEnabled: false,
         email: { enabled: true, language: 'en' },
     });
     const paidOrder = (overrides = {}) => ({ ...loadOrder('order-nl-consumer.json'), financial_status: 'paid', email: 'sanne@example.nl', ...overrides });
@@ -588,13 +592,14 @@ describe('e-mail', () => {
         await processOrder(order, { store, seller, settings: emailSettings(dir), sendEmail }); // Shopify sends it again
 
         expect(sent).toHaveLength(2);
+        // In the order they were made: first the invoice, then the credit note
         expect(sent.map((m) => m.subject)).toEqual([
-            expect.stringMatching(/^Credit note CN-\d{4}-00000001 – order #1001$/),
-            expect.stringMatching(/^Invoice INV-\d{4}-00000001 – order #1001$/),
+            expect.stringMatching(/^Invoice INV-\d{4}-1 – order #1001$/),
+            expect.stringMatching(/^Credit note CN-\d{4}-1 – order #1001$/),
         ]);
         expect(sent.every((m) => m.to === 'sanne@example.nl')).toBe(true);
-        expect(fs.readFileSync(sent[1].attachments[0].path).subarray(0, 4).toString()).toBe('%PDF');
-        expect(sent[1].text).toContain('Dear Sanne de Vries');
+        expect(fs.readFileSync(sent[0].attachments[0].path).subarray(0, 4).toString()).toBe('%PDF');
+        expect(sent[0].text).toContain('Dear Sanne de Vries');
         store.close();
     });
 

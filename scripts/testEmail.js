@@ -26,7 +26,7 @@ if (!isValidEmailAddress(to)) {
 // A sample invoice, clearly marked as a test
 const order = JSON.parse(fs.readFileSync('fixtures/order-nl-consumer.json', 'utf8'));
 const classification = classifyOrder({ sellerCountry: seller.countryCode, shipTo: { countryCode: 'NL', zip: '2011 AB' } });
-const invoice = { ...buildInvoice({ order, seller, classification }), number: 'TEST-INV-2026-00000000', issueDate: '2026-10-08' };
+const invoice = { ...buildInvoice({ order, seller, classification }), number: 'TEST-INV-2026-0', issueDate: '2026-10-08' };
 const pdf = await renderInvoice(invoice, invoiceSettings.brand);
 const logo = logoAttachment(invoiceSettings.brand.logo);
 const email = buildDocumentEmail(invoice, seller, { language: invoiceSettings.email.language, withLogo: Boolean(logo) });
