@@ -1,0 +1,20 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "Factuur downloaden"
+handle = "invoice-download"
+type = "ui_extension"
+
+# The block on the order page in the customer account ("Bestelling")
+[[extensions.targeting]]
+module = "./src/OrderInvoice.jsx"
+target = "customer-account.order-status.block.render"
+
+# The order metafield the invoice app writes the download link to
+[[extensions.metafields]]
+namespace = "invoice"
+key = "download_url"
+
+[[extensions.metafields]]
+namespace = "invoice"
+key = "number"

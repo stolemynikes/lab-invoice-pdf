@@ -1,0 +1,23 @@
+{
+  "name": "invoice-generator",
+  "version": "1.0.0",
+  "description": "Creates legal Dutch/EU invoices for Shopify orders",
+  "scripts": {
+    "start": "node index.js",
+    "generate": "node scripts/generateFromFile.js",
+    "test": "vitest run",
+    "check-shopify": "node scripts/checkShopify.js",
+    "invoice-order": "node scripts/invoiceOrder.js",
+    "designs": "node scripts/makeDesigns.js"
+  },
+  "type": "module",
+  "dependencies": {
+    "dejavu-fonts-ttf": "^2.37.3",
+    "express": "^5.2.1",
+    "pdfkit": "^0.20.2"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.3"
+  },
+  "private": true
+}

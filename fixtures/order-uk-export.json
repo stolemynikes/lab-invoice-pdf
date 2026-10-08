@@ -1,0 +1,55 @@
+{
+  "created_at": "2026-10-07T14:21:00+02:00",
+  "processed_at": "2026-10-07T14:21:00+02:00",
+  "currency": "EUR",
+  "taxes_included": true,
+  "test": false,
+  "note_attributes": [],
+  "id": 5501005,
+  "name": "#1005",
+  "email": "oliver@example.co.uk",
+  "total_price": "50.00",
+  "total_tax": "0.00",
+  "line_items": [
+    {
+      "id": 6,
+      "title": "Test tube rack",
+      "variant_title": null,
+      "sku": "RACK-12",
+      "quantity": 1,
+      "price": "30.00",
+      "discount_allocations": [],
+      "tax_lines": []
+    }
+  ],
+  "shipping_lines": [
+    {
+      "title": "International",
+      "price": "20.00",
+      "discount_allocations": [],
+      "tax_lines": []
+    }
+  ],
+  "billing_address": {
+    "address2": null,
+    "province_code": null,
+    "company": null,
+    "first_name": "Oliver",
+    "last_name": "Smith",
+    "address1": "10 Downing Lane",
+    "city": "London",
+    "zip": "SW1A 2AA",
+    "country_code": "GB"
+  },
+  "shipping_address": {
+    "address2": null,
+    "province_code": null,
+    "company": null,
+    "first_name": "Oliver",
+    "last_name": "Smith",
+    "address1": "10 Downing Lane",
+    "city": "London",
+    "zip": "SW1A 2AA",
+    "country_code": "GB"
+  }
+}

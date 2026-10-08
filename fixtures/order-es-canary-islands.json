@@ -1,0 +1,48 @@
+{
+  "created_at": "2026-10-07T14:21:00+02:00",
+  "processed_at": "2026-10-07T14:21:00+02:00",
+  "currency": "EUR",
+  "taxes_included": true,
+  "test": false,
+  "note_attributes": [],
+  "id": 5501006,
+  "name": "#1006",
+  "email": "carmen@example.es",
+  "total_price": "45.00",
+  "total_tax": "0.00",
+  "line_items": [
+    {
+      "id": 7,
+      "title": "Safety goggles",
+      "variant_title": null,
+      "sku": "GOG-1",
+      "quantity": 3,
+      "price": "15.00",
+      "discount_allocations": [],
+      "tax_lines": []
+    }
+  ],
+  "shipping_lines": [],
+  "billing_address": {
+    "address2": null,
+    "province_code": "GC",
+    "company": null,
+    "first_name": "Carmen",
+    "last_name": "Pérez",
+    "address1": "Calle Mayor 3",
+    "city": "Las Palmas",
+    "zip": "35001",
+    "country_code": "ES"
+  },
+  "shipping_address": {
+    "address2": null,
+    "province_code": "GC",
+    "company": null,
+    "first_name": "Carmen",
+    "last_name": "Pérez",
+    "address1": "Calle Mayor 3",
+    "city": "Las Palmas",
+    "zip": "35001",
+    "country_code": "ES"
+  }
+}

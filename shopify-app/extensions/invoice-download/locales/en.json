@@ -1,0 +1,6 @@
+{
+  "heading": "Invoice",
+  "number": "Invoice number {{number}}",
+  "download": "Download invoice (PDF)",
+  "notReady": "Your invoice will be available once the payment has been processed."
+}

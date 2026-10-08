@@ -1,0 +1,60 @@
+{
+  "created_at": "2026-10-07T14:21:00+02:00",
+  "processed_at": "2026-10-07T14:21:00+02:00",
+  "currency": "EUR",
+  "taxes_included": false,
+  "test": false,
+  "note_attributes": [
+    {
+      "name": "VAT number",
+      "value": "BE 0403.170.701"
+    }
+  ],
+  "id": 5501004,
+  "name": "#1004",
+  "email": "inkoop@example.be",
+  "total_price": "315.00",
+  "total_tax": "0.00",
+  "line_items": [
+    {
+      "id": 5,
+      "title": "Erlenmeyer flask",
+      "variant_title": "500 ml",
+      "sku": "ERL-500",
+      "quantity": 3,
+      "price": "100.00",
+      "discount_allocations": [],
+      "tax_lines": []
+    }
+  ],
+  "shipping_lines": [
+    {
+      "title": "DPD",
+      "price": "15.00",
+      "discount_allocations": [],
+      "tax_lines": []
+    }
+  ],
+  "billing_address": {
+    "address2": null,
+    "province_code": null,
+    "company": "Labo Janssens BV",
+    "first_name": "Pieter",
+    "last_name": "Janssens",
+    "address1": "Meir 50",
+    "city": "Antwerpen",
+    "zip": "2000",
+    "country_code": "BE"
+  },
+  "shipping_address": {
+    "address2": null,
+    "province_code": null,
+    "company": "Labo Janssens BV",
+    "first_name": "Pieter",
+    "last_name": "Janssens",
+    "address1": "Meir 50",
+    "city": "Antwerpen",
+    "zip": "2000",
+    "country_code": "BE"
+  }
+}

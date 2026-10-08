@@ -1,0 +1,54 @@
+{
+  "created_at": "2026-10-07T14:21:00+02:00",
+  "processed_at": "2026-10-07T14:21:00+02:00",
+  "currency": "EUR",
+  "taxes_included": true,
+  "test": false,
+  "note_attributes": [],
+  "id": 5501003,
+  "name": "#1003",
+  "email": "lukasz@example.pl",
+  "total_price": "123.00",
+  "total_tax": "23.00",
+  "line_items": [
+    {
+      "id": 4,
+      "title": "Pipette set",
+      "variant_title": "10 pcs",
+      "sku": "PIP-10",
+      "quantity": 1,
+      "price": "123.00",
+      "discount_allocations": [],
+      "tax_lines": [
+        {
+          "title": "VAT",
+          "rate": 0.23,
+          "price": "23.00"
+        }
+      ]
+    }
+  ],
+  "shipping_lines": [],
+  "billing_address": {
+    "address2": null,
+    "province_code": null,
+    "company": null,
+    "first_name": "Łukasz",
+    "last_name": "Wójcik",
+    "address1": "ul. Świętokrzyska 18",
+    "city": "Łódź",
+    "zip": "90-001",
+    "country_code": "PL"
+  },
+  "shipping_address": {
+    "address2": null,
+    "province_code": null,
+    "company": null,
+    "first_name": "Łukasz",
+    "last_name": "Wójcik",
+    "address1": "ul. Świętokrzyska 18",
+    "city": "Łódź",
+    "zip": "90-001",
+    "country_code": "PL"
+  }
+}

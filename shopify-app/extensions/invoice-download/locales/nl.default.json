@@ -1,0 +1,6 @@
+{
+  "heading": "Factuur",
+  "number": "Factuurnummer {{number}}",
+  "download": "Factuur downloaden (PDF)",
+  "notReady": "Je factuur wordt aangemaakt zodra de betaling is verwerkt."
+}

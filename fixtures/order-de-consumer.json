@@ -1,0 +1,67 @@
+{
+  "created_at": "2026-10-07T14:21:00+02:00",
+  "processed_at": "2026-10-07T14:21:00+02:00",
+  "currency": "EUR",
+  "taxes_included": true,
+  "test": false,
+  "note_attributes": [],
+  "id": 5501002,
+  "name": "#1002",
+  "email": "juergen@example.de",
+  "total_price": "71.40",
+  "total_tax": "11.40",
+  "line_items": [
+    {
+      "id": 3,
+      "title": "Digital pH meter",
+      "variant_title": null,
+      "sku": "PH-200",
+      "quantity": 1,
+      "price": "59.50",
+      "discount_allocations": [],
+      "tax_lines": [
+        {
+          "title": "VAT",
+          "rate": 0.19,
+          "price": "9.50"
+        }
+      ]
+    }
+  ],
+  "shipping_lines": [
+    {
+      "title": "DHL",
+      "price": "11.90",
+      "discount_allocations": [],
+      "tax_lines": [
+        {
+          "title": "VAT",
+          "rate": 0.19,
+          "price": "1.90"
+        }
+      ]
+    }
+  ],
+  "billing_address": {
+    "address2": null,
+    "province_code": null,
+    "company": null,
+    "first_name": "Jürgen",
+    "last_name": "Weiß",
+    "address1": "Hauptstraße 5",
+    "city": "Köln",
+    "zip": "50667",
+    "country_code": "DE"
+  },
+  "shipping_address": {
+    "address2": null,
+    "province_code": null,
+    "company": null,
+    "first_name": "Jürgen",
+    "last_name": "Weiß",
+    "address1": "Hauptstraße 5",
+    "city": "Köln",
+    "zip": "50667",
+    "country_code": "DE"
+  }
+}
