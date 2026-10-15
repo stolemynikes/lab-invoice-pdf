@@ -1,9 +1,9 @@
 import { get, write, odataText } from './exactClient.js';
-import { customerFromOrder, ensureCustomer } from './exactCustomer.js';
-import { pickVatCode } from './exactVatCodes.js';
-import { findEmailLayout, processInExact } from './exactInvoice.js';
+import { ensureCustomer } from './exactCustomer.js';
+import { CONCEPT, customerForExact, findEmailLayout, lookupItemIds, processInExact, toExactLine, vatCodeForLine } from './exactInvoice.js';
 import { prepareInvoiceData } from '../invoice/createInvoice.js';
 import { buildCreditNote } from '../invoice/buildCreditNote.js';
+import { formatMoney } from '../invoice/money.js';
 
 // A credit invoice in Exact for every refund in Shopify, e-mailed by Exact like the invoice.
 //
@@ -12,7 +12,6 @@ import { buildCreditNote } from '../invoice/buildCreditNote.js';
 // - Amounts and VAT come from the Shopify refund; the total in Exact must match it to the cent,
 //   otherwise it stays a concept for you to check.
 
-const CONCEPT = 20;
 const CREDIT_NOTE = 8021; // Exact's type for a sales credit note (8020 = invoice)
 
 export function refundReference(order, refund) {
@@ -28,43 +27,24 @@ export function exactCreditLines(order, creditData, { itemIds, vatCodes, shippin
         const itemCode = line.sku || (isShipping ? shippingItem : null);
         const item = itemCode ? itemIds.get(itemCode) : null;
         if (!item) problems.push(itemCode ? `article ${itemCode} does not exist in Exact` : `"${line.description}" cannot be credited automatically, make this credit note by hand`);
-
-        const vatCode = pickVatCode(vatCodes, {
-            scenario: creditData.scenario,
-            countryCode: creditData.destinationCountry,
-            rate: line.vatRate,
-            included,
-            allowZeroForTest,
-        });
-        if (!vatCode) problems.push(`no Exact VAT code for ${Math.round(line.vatRate * 10000) / 100}% on "${line.description}"`);
-
-        // Negative amounts; a quantity that does not divide the amount evenly becomes "-1 x total"
-        const total = included ? line.grossTotal : line.netTotal;
-        const quantity = Math.abs(line.quantity) || 1;
-        const even = total % quantity === 0;
-        const name = isShipping ? 'Shipping & handling' : line.description;
-        return {
-            Item: item,
-            Description: (even ? name : `${quantity} × ${name}`).slice(0, 60),
-            Quantity: even ? -quantity : -1,
-            NetPrice: Math.abs(even ? total / quantity : total) / 100,
-            VATCode: vatCode,
-        };
+        const vatCode = vatCodeForLine(vatCodes, creditData, line, { included, allowZeroForTest }, problems);
+        return toExactLine(line, { item, name: isShipping ? 'Shipping & handling' : line.description, vatCode, included });
     });
     return { lines, problems };
 }
 
+// Returns { credits: the credit notes made in this round, done: false while the invoice is not in Exact yet }
 export async function creditRefundsInExact(order, { settings, seller, invoiceSettings, cache = {}, log = () => {} }) {
     const base = `/api/v1/${settings.division}`;
-    const results = [];
-    if (settings.testOrdersOnly && !order.test) return results;
+    const credits = [];
+    if (settings.testOrdersOnly && !order.test) return { credits, done: true };
     const refunds = [...(order.refunds || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    if (refunds.length === 0) return results;
+    if (refunds.length === 0) return { credits, done: true };
 
     // The invoice the credit notes refer to
     const invoices = await get(settings, `${base}/salesinvoice/SalesInvoices?$filter=YourRef eq ${odataText(order.name)}&$select=InvoiceNumber,InvoiceDate,Status`);
     const invoice = invoices.find((i) => i.Status !== CONCEPT);
-    if (!invoice) return results; // invoice first; the next round makes the credit notes
+    if (!invoice) return { credits, done: false }; // invoice first; the next round makes the credit notes
     const invoiceDate = exactDate(invoice.InvoiceDate);
 
     let invoiceData = null;
@@ -86,11 +66,7 @@ export async function creditRefundsInExact(order, { settings, seller, invoiceSet
         if (!credit) {
             if (settings.sendEmail) await findEmailLayout(settings, cache);
             cache.vatCodes ||= await get(settings, `${base}/vat/VATCodes?$select=Code,Description,Percentage,Type`);
-            const itemIds = new Map();
-            for (const code of new Set([...creditData.lines.map((line) => line.sku).filter(Boolean), settings.shippingItem])) {
-                const [item] = await get(settings, `${base}/logistics/Items?$filter=Code eq ${odataText(code)}&$select=ID`);
-                if (item) itemIds.set(code, item.ID);
-            }
+            const itemIds = await lookupItemIds(settings, [...creditData.lines.map((line) => line.sku), settings.shippingItem]);
             const { lines, problems } = exactCreditLines(order, creditData, {
                 itemIds,
                 vatCodes: cache.vatCodes,
@@ -99,7 +75,7 @@ export async function creditRefundsInExact(order, { settings, seller, invoiceSet
             });
             if (problems.length) throw new Error(`credit note for refund ${refund.id} not made in Exact: ${problems.join('; ')}`);
 
-            const customer = await ensureCustomer(settings, customerFromOrder(order));
+            const customer = await ensureCustomer(settings, customerForExact(order, invoiceData));
             credit = await write(settings, 'POST', `${base}/salesinvoice/SalesInvoices`, {
                 Type: CREDIT_NOTE,
                 Journal: settings.journal,
@@ -123,13 +99,13 @@ export async function creditRefundsInExact(order, { settings, seller, invoiceSet
         // Must be exactly the amount paid back, as a negative total
         const [check] = await get(settings, `${base}/salesinvoice/SalesInvoices?$filter=InvoiceID eq guid'${credit.InvoiceID}'&$select=AmountDC`);
         if (Math.round(check.AmountDC * 100) !== creditData.totals.gross) {
-            throw new Error(`concept credit note in Exact is €${check.AmountDC}, Shopify refund is €${creditData.totals.gross / 100}. Left as concept, check it in Exact.`);
+            throw new Error(`concept credit note in Exact is ${formatMoney(Math.round(check.AmountDC * 100))}, Shopify refund is ${formatMoney(creditData.totals.gross)}. Left as concept, check it in Exact.`);
         }
 
         const number = await processInExact(settings, credit.InvoiceID, creditData.refundDate, cache, { creditNote: true });
-        results.push({ refundId: String(refund.id), number, invoiceNumber: invoice.InvoiceNumber });
+        credits.push({ refundId: String(refund.id), number, invoiceNumber: invoice.InvoiceNumber });
     }
-    return results;
+    return { credits, done: true };
 }
 
 // Exact sends dates as "/Date(1760486400000)/"

@@ -17,6 +17,8 @@ services:
       PORT: 8080
       INVOICE_PDF_DIR: /facturen
       DATABASE_PATH: /data/invoices.db
+      # The Exact login changes every time it is used, so it must live on the volume (not inside the container)
+      EXACT_TOKEN_PATH: /data/exact-token.json
       TZ: Europe/Amsterdam
     volumes:
       # PDFs + JSON copies: the shared folder "facturen" (with snapshots and Hyper Backup)

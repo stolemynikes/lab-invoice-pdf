@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { withExactLock } from './exactLock.js';
 
 // Talks to the Exact Online REST API.
 // Login works with OAuth: you log in once in the browser (with 2FA), after that the app keeps itself
@@ -41,11 +42,23 @@ export async function exchangeCode(settings, code) {
 export async function getAccessToken(settings) {
     const saved = readToken(settings);
     if (!saved) throw new Error('Not connected to Exact yet. Run: npm run exact-connect');
-    if (saved.accessToken && Date.now() < saved.expiresAt - 30_000) return saved.accessToken;
+    if (isFresh(saved)) return saved.accessToken;
 
-    const token = await requestToken(settings, { grant_type: 'refresh_token', refresh_token: saved.refreshToken });
-    return saveToken(settings, token).accessToken;
+    // Refreshing changes the refresh token, so only one process may do it at a time.
+    // After waiting for the lock, read the file again: another process may just have refreshed it.
+    return withExactLock(
+        settings,
+        async () => {
+            const current = readToken(settings);
+            if (isFresh(current)) return current.accessToken;
+            const token = await requestToken(settings, { grant_type: 'refresh_token', refresh_token: current.refreshToken });
+            return saveToken(settings, token).accessToken;
+        },
+        { waitMs: 60_000 },
+    );
 }
+
+const isFresh = (saved) => Boolean(saved?.accessToken) && Date.now() < saved.expiresAt - 30_000;
 
 // GET a REST endpoint, e.g. get(settings, '/api/v1/current/Me'). Follows the pages Exact splits long lists into.
 export async function get(settings, endpoint) {
@@ -91,7 +104,7 @@ export function odataText(value) {
 
 async function requestToken(settings, fields) {
     if (!settings.clientId || !settings.clientSecret) throw new Error('EXACT_CLIENT_ID and EXACT_CLIENT_SECRET are not filled in in .env');
-    const response = await fetch(new URL(TOKEN_URL, settings.baseUrl), {
+    const response = await (settings.fetch || fetch)(new URL(TOKEN_URL, settings.baseUrl), {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
         body: new URLSearchParams({ ...fields, client_id: settings.clientId, client_secret: settings.clientSecret }),

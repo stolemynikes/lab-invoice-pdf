@@ -5,7 +5,8 @@ import { PORT, PUBLIC_URL, seller, shopify, invoiceSettings, checkSellerDetails,
 import { InvoiceStore } from './invoice/invoiceStore.js';
 import { runCatchUp } from './invoice/catchUp.js';
 import { runExactCatchUp } from './exact/exactCatchUp.js';
-import { fetchOrdersUpdatedSince, fetchProductDetails } from './shopify/shopifyClient.js';
+import { fetchOrdersUpdatedSince, fetchOrderById, fetchProductDetails } from './shopify/shopifyClient.js';
+import { withExactLock, ExactBusyError } from './exact/exactLock.js';
 import { saveDocumentNumbers } from './shopify/documentNumbers.js';
 import { createMailer } from './email/mailer.js';
 
@@ -37,6 +38,8 @@ if (INVOICE_MODE === 'exact') {
         problems.push('INVOICE_MODE=exact needs EXACT_DIVISION, and that administration in EXACT_WRITE_DIVISIONS');
     }
     if (!fs.existsSync(exact.tokenPath)) problems.push('Not connected to Exact yet: run node scripts/exactConnect.js');
+    // A wrong value (0, "2m") would make the server ask Shopify and Exact non-stop
+    if (!Number.isFinite(exact.pollMinutes) || exact.pollMinutes < 1) problems.push('EXACT_POLL_MINUTES must be a number of at least 1');
 }
 if (!PUBLIC_URL.startsWith('https://') && !PUBLIC_URL.startsWith('http://localhost')) {
     problems.push('PUBLIC_URL must start with https:// (download links must always be encrypted)');
@@ -113,17 +116,22 @@ function startExactCatchUp() {
         }
         running = true;
         try {
-            const summary = await runExactCatchUp({
-                store,
-                settings: exact,
-                seller,
-                invoiceSettings,
-                fetchOrdersSince: (since) => fetchOrdersUpdatedSince(shopify, since),
-                fetchProduct: (productId, variantId) => fetchProductDetails(shopify, productId, variantId),
-                log: console.log,
-            });
+            // The lock keeps a script (npm run exact-invoice-order) and the server from working on Exact at the same time
+            const summary = await withExactLock(exact, () =>
+                runExactCatchUp({
+                    store,
+                    settings: exact,
+                    seller,
+                    invoiceSettings,
+                    fetchOrdersSince: (since) => fetchOrdersUpdatedSince(shopify, since),
+                    fetchOrderById: (orderId) => fetchOrderById(shopify, orderId),
+                    fetchProduct: (productId, variantId) => fetchProductDetails(shopify, productId, variantId),
+                    log: console.log,
+                }),
+            );
             summary.errors.forEach((error) => console.log(`  ⚠ ${error}`));
         } catch (error) {
+            if (error instanceof ExactBusyError) return; // a script is busy; the next round picks it up
             console.log('Exact catch-up could not reach Shopify or Exact, will try again next round:', error.message);
         } finally {
             running = false;

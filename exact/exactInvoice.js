@@ -3,6 +3,7 @@ import { customerFromOrder, ensureCustomer } from './exactCustomer.js';
 import { pickVatCode } from './exactVatCodes.js';
 import { createItemFromShopify, invoiceLineNote } from './exactItem.js';
 import { prepareInvoiceData } from '../invoice/createInvoice.js';
+import { formatMoney } from '../invoice/money.js';
 
 // Makes the invoice for a paid Shopify order in Exact Online, and lets Exact process and e-mail it.
 //
@@ -14,7 +15,7 @@ import { prepareInvoiceData } from '../invoice/createInvoice.js';
 //   5. Process: Exact gives the number, books it and e-mails the PDF.
 
 const PAID = ['paid', 'partially_refunded', 'refunded'];
-const CONCEPT = 20;
+export const CONCEPT = 20; // Exact status of an invoice that is not processed yet
 
 // The e-mail text for invoices: EXACT_EMAIL_LAYOUT (its id), or else the only e-mail layout (type 2) Exact has
 export async function findEmailLayout(settings, cache) {
@@ -65,30 +66,61 @@ export function exactLines(order, invoiceData, { itemIds, vatCodes, shippingItem
         const itemCode = isShipping ? shippingItem : line.sku;
         const item = itemCode ? itemIds.get(itemCode) : null;
         if (!item) problems.push(itemCode ? `article ${itemCode} does not exist in Exact` : `"${line.description}" has no SKU`);
-
-        const vatCode = pickVatCode(vatCodes, {
-            scenario: invoiceData.scenario,
-            countryCode: invoiceData.destinationCountry,
-            rate: line.vatRate,
-            included,
-            allowZeroForTest,
-        });
-        if (!vatCode) problems.push(`no Exact VAT code for ${Math.round(line.vatRate * 10000) / 100}% (${invoiceData.scenario}, ${invoiceData.destinationCountry}) on "${line.description}"`);
-
-        // Prices as the customer saw them: incl. VAT when the shop shows prices incl. VAT
-        const total = included ? line.grossTotal : line.netTotal;
-        const even = total % line.quantity === 0;
-        return {
-            Item: item,
-            Description: (even ? name : `${line.quantity} × ${name}`).slice(0, 60),
-            Quantity: even ? line.quantity : 1,
-            NetPrice: (even ? total / line.quantity : total) / 100,
-            VATCode: vatCode,
-            ...(note ? { Notes: note } : {}),
-        };
+        const vatCode = vatCodeForLine(vatCodes, invoiceData, line, { included, allowZeroForTest }, problems);
+        return toExactLine(line, { item, name, note, vatCode, included });
     });
 
     return { lines, problems };
+}
+
+// The Exact VAT code for one line; a missing code is added to problems (and then nothing is made)
+export function vatCodeForLine(vatCodes, documentData, line, { included, allowZeroForTest }, problems) {
+    const vatCode = pickVatCode(vatCodes, {
+        scenario: documentData.scenario,
+        countryCode: documentData.destinationCountry,
+        rate: line.vatRate,
+        included,
+        allowZeroForTest,
+    });
+    if (!vatCode) {
+        problems.push(`no Exact VAT code for ${Math.round(line.vatRate * 10000) / 100}% (${documentData.scenario}, ${documentData.destinationCountry}) on "${line.description}"`);
+    }
+    return vatCode;
+}
+
+// One Exact line from an invoice or credit note line (cents; negative on a credit note).
+// Prices as the customer saw them: incl. VAT when the shop shows prices incl. VAT.
+// A quantity that does not divide the amount evenly becomes "1 x total" with "3 × name" as description.
+export function toExactLine(line, { item, name, note, vatCode, included }) {
+    const total = included ? line.grossTotal : line.netTotal;
+    const quantity = Math.abs(line.quantity) || 1;
+    const sign = total < 0 ? -1 : 1;
+    const even = total % quantity === 0;
+    return {
+        Item: item,
+        Description: (even ? name : `${quantity} × ${name}`).slice(0, 60),
+        Quantity: sign * (even ? quantity : 1),
+        NetPrice: Math.abs(even ? total / quantity : total) / 100,
+        VATCode: vatCode,
+        ...(note ? { Notes: note } : {}),
+    };
+}
+
+// Article code -> Exact article id, for the codes that exist in Exact
+export async function lookupItemIds(settings, codes) {
+    const itemIds = new Map();
+    for (const code of new Set(codes.filter(Boolean))) {
+        const [item] = await get(settings, `/api/v1/${settings.division}/logistics/Items?$filter=Code eq ${odataText(code)}&$select=ID`);
+        if (item) itemIds.set(code, item.ID);
+    }
+    return itemIds;
+}
+
+// The VAT number may only be used to find the customer in Exact when VIES confirmed it (EU business sale).
+// A number typed at checkout but not confirmed is ignored, so nobody can attach themselves to another company.
+export function customerForExact(order, invoiceData) {
+    const verifiedVatId = invoiceData.scenario === 'eu_b2b' && invoiceData.vatCheck?.status === 'valid' ? invoiceData.buyer?.vatId || null : null;
+    return { ...customerFromOrder(order), vatId: verifiedVatId };
 }
 
 // fetchProduct(productId, variantId): Shopify product details, for the CAS etc. line under each product
@@ -112,17 +144,17 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
     if (!invoice) {
         // 2. Articles and VAT codes
         cache.vatCodes ||= await get(settings, `${base}/vat/VATCodes?$select=Code,Description,Percentage,Type`);
-        const itemIds = new Map();
-        const codes = new Set([...order.line_items.map((item) => item.sku).filter(Boolean), settings.shippingItem]);
-        for (const code of codes) {
-            const [item] = await get(settings, `${base}/logistics/Items?$filter=Code eq ${odataText(code)}&$select=ID`);
-            if (item) itemIds.set(code, item.ID);
+        const itemIds = await lookupItemIds(settings, [...order.line_items.map((item) => item.sku), settings.shippingItem]);
+        // Products that are only in Shopify yet: made as new Exact articles, but only after every other check passed.
+        // One per SKU, also when two order lines share a SKU.
+        const toCreate = [];
+        if (settings.createItems && fetchProduct) {
+            for (const item of order.line_items) {
+                if (item.quantity <= 0 || !item.sku || itemIds.has(item.sku) || !item.product_id || !item.variant_id) continue;
+                toCreate.push(item);
+                itemIds.set(item.sku, `new:${item.sku}`);
+            }
         }
-        // Products that are only in Shopify yet: made as new Exact articles, but only after every other check passed
-        const toCreate = settings.createItems && fetchProduct
-            ? order.line_items.filter((item) => item.quantity > 0 && item.sku && !itemIds.has(item.sku) && item.product_id && item.variant_id)
-            : [];
-        for (const item of toCreate) itemIds.set(item.sku, `new:${item.sku}`);
 
         const { lines, problems } = exactLines(order, invoiceData, {
             itemIds,
@@ -153,7 +185,7 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
         }
 
         // 3. Customer with contact person
-        const customer = await ensureCustomer(settings, customerFromOrder(order));
+        const customer = await ensureCustomer(settings, customerForExact(order, invoiceData));
 
         // 4. Concept invoice
         invoice = await write(settings, 'POST', `${base}/salesinvoice/SalesInvoices`, {
@@ -178,7 +210,7 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
     // The total in Exact must be exactly what the customer paid, to the cent
     const [check] = await get(settings, `${base}/salesinvoice/SalesInvoices?$filter=InvoiceID eq guid'${invoice.InvoiceID}'&$select=AmountDC,Status`);
     if (Math.round(check.AmountDC * 100) !== expectedTotal) {
-        throw new Error(`concept invoice in Exact is €${check.AmountDC}, Shopify says €${expectedTotal / 100}. Left as concept, check it in Exact.`);
+        throw new Error(`concept invoice in Exact is ${formatMoney(Math.round(check.AmountDC * 100))}, Shopify says ${formatMoney(expectedTotal)}. Left as concept, check it in Exact.`);
     }
 
     // 5. Process: number, booking and e-mail

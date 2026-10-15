@@ -253,6 +253,12 @@ What happens per paid order:
 
 The server checks Shopify every 2 minutes (`EXACT_POLL_MINUTES`) and right away when a Shopify webhook arrives, so it also works on a PC without webhooks.
 
+**Light on Exact's limits** (Exact allows about 60 API calls a minute and 5000 a day): an order that is finished is remembered and only looked at again when it changes in Shopify. An order that fails (missing article, VAT code...) is retried later and later (2, 4, 8... up to 60 minutes), or right away when it changes in Shopify.
+
+**One at a time:** the server and the scripts share a lock (`data/exact.lock`), so they never make an invoice for the same order at the same time or refresh the Exact login together. A script waits up to 2 minutes for the server.
+
+**Customers:** a business customer is only matched on VAT number when VIES confirmed it; otherwise on e-mail address. An existing relation in Exact is never changed, only a contact person is added.
+
 **Safety while testing:**
 
 - Exact is only written to in the administrations in `EXACT_WRITE_DIVISIONS` (now only the COPY). The real administration is added only after testing.

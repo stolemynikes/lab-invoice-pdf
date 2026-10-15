@@ -2,27 +2,51 @@ import { dutchDate } from '../invoice/money.js';
 import { invoiceOrderInExact, isPaid } from './exactInvoice.js';
 import { creditRefundsInExact } from './exactCredit.js';
 
-// Asks Shopify every few minutes which orders changed, and makes the Exact invoice for every paid order
-// that does not have one yet. Works without a public address (no webhooks needed), so it also runs on a PC.
-// Exact itself is the list of what is done: an order with an invoice (Uw ref. = order number) is skipped.
+// Asks Shopify every few minutes which orders changed, and makes the Exact invoice (and credit notes) for every
+// paid order that still needs one. Works without a public address (no webhooks needed), so it also runs on a PC.
+//
+// Kept light on purpose, because Exact allows only a limited number of API calls per minute and per day:
+// - An order that is finished (invoice and all credit notes in Exact) is remembered with its Shopify
+//   "updated_at". It is only looked at again when it changes in Shopify (e.g. a new refund).
+// - An order that fails (missing article, VAT code...) goes on a retry list and is tried again later and later
+//   (2, 4, 8... up to 60 minutes), or right away when the order changes in Shopify.
+// - The look-back moves on every round; failing orders are kept on the retry list, not by looking back further.
 
-const ONE_HOUR = 60 * 60 * 1000;
+const LOOK_BACK_MS = 10 * 60 * 1000;
+const MAX_WAIT_MINUTES = 60;
 
-export async function runExactCatchUp({ store, settings, seller, invoiceSettings, fetchOrdersSince, fetchProduct = null, now = new Date(), log = () => {} }) {
+export async function runExactCatchUp({ store, settings, seller, invoiceSettings, fetchOrdersSince, fetchOrderById = null, fetchProduct = null, now = new Date(), log = () => {} }) {
     const firstDay = invoiceSettings.startDate || store.getSetting('first_used');
     const lastRun = store.getSetting('last_exact_catch_up');
 
-    // Look back one extra hour for safety, but never before the first day
-    let since = lastRun ? new Date(new Date(lastRun).getTime() - ONE_HOUR) : new Date(`${firstDay}T00:00:00Z`);
+    let since = lastRun ? new Date(new Date(lastRun).getTime() - LOOK_BACK_MS) : new Date(`${firstDay}T00:00:00Z`);
     const earliest = new Date(`${firstDay}T00:00:00Z`);
     if (since < earliest) since = earliest;
 
     const summary = { invoiced: [], errors: [] };
     const orders = await fetchOrdersSince(since.toISOString());
-    const cache = {};
+    const retries = readRetries(store);
 
+    // Failing orders whose next try is due, also when they did not change in Shopify
+    for (const [orderId, retry] of Object.entries(retries)) {
+        if (retry.nextTry > now.getTime() || orders.some((order) => String(order.id) === orderId) || !fetchOrderById) continue;
+        const order = await fetchOrderById(orderId);
+        if (order) orders.push(order);
+        else delete retries[orderId];
+    }
+
+    const cache = {};
     for (const order of orders) {
         if (!isPaid(order) || dutchDate(new Date(order.created_at)) < firstDay) continue;
+        if (settings.testOrdersOnly && !order.test) continue; // costs no Exact calls; never marked as done
+
+        const orderId = String(order.id);
+        const doneKey = `exact_done:${orderId}`;
+        if (store.getSetting(doneKey) === order.updated_at) continue; // finished and not changed since
+
+        const retry = retries[orderId];
+        if (retry && retry.nextTry > now.getTime() && retry.updatedAt === order.updated_at) continue; // still waiting
+
         try {
             const result = await invoiceOrderInExact(order, { settings, seller, invoiceSettings, fetchProduct, cache, log });
             if (result.status === 'invoiced') {
@@ -30,16 +54,30 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
                 log(`Exact: invoice ${result.number} for ${order.name}${result.emailed ? ', e-mailed by Exact' : ''}`);
             }
             // Refunds: a credit note per refund, once the invoice is there
-            for (const credit of await creditRefundsInExact(order, { settings, seller, invoiceSettings, cache, log })) {
+            const { credits, done } = await creditRefundsInExact(order, { settings, seller, invoiceSettings, cache, log });
+            for (const credit of credits) {
                 summary.invoiced.push(`${order.name} refund -> ${credit.number}`);
                 log(`Exact: credit note ${credit.number} for ${order.name} (invoice ${credit.invoiceNumber})${settings.sendEmail ? ', e-mailed by Exact' : ''}`);
             }
+            if (done && ['invoiced', 'already invoiced'].includes(result.status)) store.setSetting(doneKey, order.updated_at);
+            delete retries[orderId];
         } catch (error) {
-            summary.errors.push(`${order.name}: ${error.message}`);
+            const attempts = (retry?.attempts || 0) + 1;
+            const waitMinutes = Math.min(MAX_WAIT_MINUTES, 2 ** attempts);
+            retries[orderId] = { name: order.name, attempts, nextTry: now.getTime() + waitMinutes * 60 * 1000, updatedAt: order.updated_at, error: error.message };
+            summary.errors.push(`${order.name}: ${error.message} (next try in ${waitMinutes} min)`);
         }
     }
 
-    // Only move on when every order worked; otherwise the same orders are tried again next round
-    if (summary.errors.length === 0) store.setSetting('last_exact_catch_up', now.toISOString());
+    store.setSetting('exact_retry', JSON.stringify(retries));
+    store.setSetting('last_exact_catch_up', now.toISOString());
     return summary;
+}
+
+function readRetries(store) {
+    try {
+        return JSON.parse(store.getSetting('exact_retry') || '{}');
+    } catch {
+        return {};
+    }
 }

@@ -5,7 +5,11 @@ import { describe, it, expect } from 'vitest';
 import { ensureCustomer, customerFromOrder } from '../exact/exactCustomer.js';
 import { write, odataText } from '../exact/exactClient.js';
 import { pickVatCode } from '../exact/exactVatCodes.js';
-import { invoiceOrderInExact } from '../exact/exactInvoice.js';
+import { invoiceOrderInExact, customerForExact } from '../exact/exactInvoice.js';
+import { runExactCatchUp } from '../exact/exactCatchUp.js';
+import { withExactLock, ExactBusyError, lockPathFor } from '../exact/exactLock.js';
+import { getAccessToken } from '../exact/exactClient.js';
+import { flag } from '../config.js';
 import { creditRefundsInExact } from '../exact/exactCredit.js';
 
 const ACCOUNT = '11111111-1111-1111-1111-111111111111';
@@ -50,11 +54,11 @@ describe('Exact customer with contact person', () => {
         expect(main.body).toEqual({ MainContact: CONTACT });
     });
 
-    it('adds only the contact person when the relation already exists without one (like LD1005)', async () => {
+    it('adds only the contact person to an existing relation, and never changes its main contact', async () => {
         const exact = fakeExact({ accounts: [{ ID: ACCOUNT, MainContact: null }] });
         const result = await ensureCustomer(exact.settings, customer);
         expect(result.created).toEqual({ account: false, contact: true });
-        expect(exact.writes().map((w) => w.method)).toEqual(['POST', 'PUT']);
+        expect(exact.writes().map((w) => w.method)).toEqual(['POST']);
     });
 
     it('changes nothing when relation and contact person are already there', async () => {
@@ -275,7 +279,7 @@ describe('Exact credit note for a refund', () => {
 
     it('makes a credit note with negative lines that refers to the invoice, and lets Exact e-mail it', async () => {
         const exact = fakeCrediting();
-        expect(await run(exact)).toEqual([{ refundId: '9901', number: 26700020, invoiceNumber: 26700012 }]);
+        expect(await run(exact)).toEqual({ credits: [{ refundId: '9901', number: 26700020, invoiceNumber: 26700012 }], done: true });
 
         const credit = exact.calls.find((c) => c.url.endsWith('/salesinvoice/SalesInvoices')).body;
         expect(credit).toMatchObject({ Type: 8021, YourRef: '#1001 R9901', InvoiceDate: '2026-10-12', InvoiceTo: ACCOUNT, InvoiceToContactPerson: CONTACT });
@@ -297,13 +301,13 @@ describe('Exact credit note for a refund', () => {
 
     it('never credits the same refund twice', async () => {
         const exact = fakeCrediting({ credits: [{ InvoiceID: CREDIT, InvoiceNumber: 26700020, Status: 50 }] });
-        expect(await run(exact)).toEqual([]);
+        expect(await run(exact)).toEqual({ credits: [], done: true });
         expect(exact.writes()).toEqual([]);
     });
 
     it('waits until the invoice is in Exact', async () => {
         const exact = fakeCrediting({ invoice: false });
-        expect(await run(exact)).toEqual([]);
+        expect(await run(exact)).toEqual({ credits: [], done: false });
         expect(exact.writes()).toEqual([]);
     });
 
@@ -331,5 +335,134 @@ describe('Exact attacks', () => {
         }
         await ensureCustomer(exact.settings, { ...customer, vatId: "BE1' or VATNumber ne '" });
         expect(exact.calls[0].url).toContain("VATNumber eq 'BE1'' or VATNumber ne '''");
+    });
+});
+
+describe('Exact safety (review fixes)', () => {
+    const order = () => ({ ...JSON.parse(fs.readFileSync('fixtures/order-nl-consumer.json', 'utf8')), test: true, financial_status: 'paid' });
+
+    it('only uses a VAT number to find the customer when VIES confirmed it', () => {
+        const typed = { ...order(), note_attributes: [{ name: 'VAT number', value: 'NL866495708B01' }] };
+        const unconfirmed = { scenario: 'eu_b2c', vatCheck: { status: 'unavailable' }, buyer: { vatId: 'BE0403170701' } };
+        expect(customerForExact(typed, unconfirmed).vatId).toBeNull();
+        const confirmed = { scenario: 'eu_b2b', vatCheck: { status: 'valid' }, buyer: { vatId: 'BE0403170701' } };
+        expect(customerForExact(typed, confirmed).vatId).toBe('BE0403170701');
+    });
+
+    it('keeps a safety switch on unless it clearly says no', () => {
+        for (const value of ['TRUE', 'true ', '1', 'yes', 'ja', undefined, '', 'tru', 'flase']) expect(flag(value, true)).toBe(true);
+        for (const value of ['false', 'FALSE', ' 0', 'no', 'nee', 'off']) expect(flag(value, true)).toBe(false);
+    });
+
+    it('makes a missing article only once when two order lines share its SKU', async () => {
+        const exact = fakeExact();
+        const posted = [];
+        exact.settings = { ...exact.settings, journal: '70', paymentCondition: 'WS', shippingItem: 'VERZENDING', sendEmail: false, testOrdersOnly: true, createItems: true };
+        const base = exact.settings.fetch;
+        exact.settings.fetch = async (url, options = {}) => {
+            const text = decodeURIComponent(String(url));
+            const json = (d) => ({ ok: true, status: 200, json: async () => ({ d }), text: async () => '' });
+            if (!options.method && text.includes('/vat/VATCodes')) return json({ results: [] });
+            if (!options.method && text.includes('/logistics/ItemGroups')) return json({ results: [{ ID: 'g' }] });
+            if (!options.method && text.includes('/logistics/Items')) return json({ results: /VERZENDING/.test(text) ? [{ ID: 'ship' }] : [] });
+            if (!options.method && text.includes('InvoiceID eq guid')) return json({ results: [{ AmountDC: 21.8, InvoiceNumber: 1 }] });
+            if (!options.method && text.includes('/SalesInvoices')) return json({ results: [] });
+            if (options.method === 'POST' && text.includes('/logistics/Items')) {
+                posted.push(JSON.parse(options.body).Code);
+                return json({ ID: 'new' });
+            }
+            if (options.method === 'POST' && text.includes('/salesinvoice/')) return json({ InvoiceID: '33333333-3333-3333-3333-333333333333' });
+            return base(url, options);
+        };
+        const line = { ...order().line_items[1], sku: 'SAME', product_id: 1, variant_id: 2, quantity: 1, price: '10.90', tax_lines: [{ rate: 0.09, price: '0.90' }] };
+        const twoLines = { ...order(), line_items: [line, { ...line, id: 99 }], shipping_lines: [], total_price: '21.80' };
+        const fetchProduct = async () => ({ product: { title: 'Notebook' }, variant: {}, fields: {} });
+        await invoiceOrderInExact(twoLines, { settings: exact.settings, seller: { countryCode: 'NL' }, invoiceSettings: { viesEnabled: false }, fetchProduct });
+        expect(posted).toEqual(['SAME']);
+    });
+
+    describe('catch-up', () => {
+        const fakeStore = (values = {}) => ({
+            values,
+            getSetting: (key) => values[key] ?? null,
+            setSetting: (key, value) => {
+                values[key] = value;
+            },
+        });
+        const failingExact = () => {
+            const exact = fakeExact();
+            exact.settings = { ...exact.settings, testOrdersOnly: true, sendEmail: false };
+            exact.settings.fetch = async (url) => {
+                exact.calls.push({ method: 'GET', url: String(url) });
+                return { ok: false, status: 500, text: async () => 'down' };
+            };
+            return exact;
+        };
+        const now = new Date('2026-10-15T12:00:00Z');
+        const invoiceSettings = { startDate: '2026-10-01' };
+
+        it('makes no Exact calls for orders that are finished and did not change', async () => {
+            const exact = failingExact();
+            const paid = { ...order(), id: 7, updated_at: '2026-10-15T11:00:00Z' };
+            const store = fakeStore({ 'exact_done:7': '2026-10-15T11:00:00Z' });
+            const summary = await runExactCatchUp({ store, settings: exact.settings, seller: {}, invoiceSettings, fetchOrdersSince: async () => [paid], now });
+            expect(summary.errors).toEqual([]);
+            expect(exact.calls).toEqual([]);
+        });
+
+        it('puts a failing order on the retry list with a growing wait, and still moves the look-back on', async () => {
+            const exact = failingExact();
+            const paid = { ...order(), id: 8, name: 'LD1008', updated_at: '2026-10-15T11:00:00Z' };
+            const store = fakeStore();
+            const run = (at) => runExactCatchUp({ store, settings: exact.settings, seller: {}, invoiceSettings, fetchOrdersSince: async () => [paid], now: at });
+
+            const first = await run(now);
+            expect(first.errors[0]).toMatch(/^LD1008: .*next try in 2 min/);
+            expect(store.values.last_exact_catch_up).toBe(now.toISOString());
+
+            // One minute later: still waiting, no Exact calls
+            const callsBefore = exact.calls.length;
+            expect((await run(new Date(now.getTime() + 60_000))).errors).toEqual([]);
+            expect(exact.calls.length).toBe(callsBefore);
+
+            // Three minutes later: tried again, now waits 4 minutes
+            expect((await run(new Date(now.getTime() + 180_000))).errors[0]).toMatch(/next try in 4 min/);
+        });
+    });
+
+    describe('lock', () => {
+        const settingsIn = () => ({ tokenPath: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lock-')), 'token.json') });
+
+        it('lets only one run work with Exact at a time, and is re-entrant inside one run', async () => {
+            const settings = settingsIn();
+            fs.writeFileSync(lockPathFor(settings), JSON.stringify({ pid: process.pid, at: Date.now() }));
+            await expect(withExactLock(settings, async () => 'x')).rejects.toBeInstanceOf(ExactBusyError);
+            fs.rmSync(lockPathFor(settings));
+
+            const result = await withExactLock(settings, () => withExactLock(settings, async () => 'nested'));
+            expect(result).toBe('nested');
+            expect(fs.existsSync(lockPathFor(settings))).toBe(false);
+        });
+
+        it('takes over a lock left behind by a process that is gone', async () => {
+            const settings = settingsIn();
+            fs.writeFileSync(lockPathFor(settings), JSON.stringify({ pid: 999999999, at: Date.now() }));
+            expect(await withExactLock(settings, async () => 'ok')).toBe('ok');
+        });
+
+        it('does not refresh the login again when another process just did', async () => {
+            const settings = settingsIn();
+            let refreshed = 0;
+            settings.fetch = async () => {
+                refreshed++;
+                return { ok: true, json: async () => ({ access_token: 'new', refresh_token: 'r2', expires_in: 600 }) };
+            };
+            Object.assign(settings, { baseUrl: 'https://start.exactonline.nl', clientId: 'id', clientSecret: 'secret' });
+            fs.writeFileSync(settings.tokenPath, JSON.stringify({ accessToken: 'old', refreshToken: 'r1', expiresAt: 0 }));
+            expect(await getAccessToken(settings)).toBe('new');
+            expect(await getAccessToken(settings)).toBe('new');
+            expect(refreshed).toBe(1);
+            expect(JSON.parse(fs.readFileSync(settings.tokenPath, 'utf8')).refreshToken).toBe('r2');
+        });
     });
 });

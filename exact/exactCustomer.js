@@ -29,7 +29,8 @@ export async function ensureCustomer(settings, customer) {
     const base = `/api/v1/${settings.division}`;
     const created = { account: false, contact: false };
 
-    // 1. The relation: business customers by VAT number (one relation per company), others by e-mail
+    // 1. The relation: business customers by VAT number (one relation per company), others by e-mail.
+    //    customer.vatId must be a VIES-confirmed number (see customerForExact), never just what was typed at checkout.
     const filter = customer.vatId ? `VATNumber eq ${odataText(customer.vatId)}` : `Email eq ${odataText(customer.email)}`;
     let [account] = await get(settings, `${base}/crm/Accounts?$filter=${filter}&$select=ID,Code,Name,MainContact`);
     if (!account) {
@@ -60,8 +61,9 @@ export async function ensureCustomer(settings, customer) {
     }
     if (!GUID.test(contact.ID)) throw new Error('Exact returned an unexpected contact id');
 
-    // 3. A relation without a main contact gets this one, so Exact also uses it when invoicing by hand
-    if (!account.MainContact) {
+    // 3. A relation the app just made gets this contact as main contact, so Exact also uses it when invoicing
+    //    by hand. An existing relation is never changed: its main contact stays who it was.
+    if (created.account) {
         await write(settings, 'PUT', `${base}/crm/Accounts(guid'${account.ID}')`, { MainContact: contact.ID });
     }
 

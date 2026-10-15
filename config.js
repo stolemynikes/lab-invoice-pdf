@@ -7,6 +7,15 @@ if (fs.existsSync('.env')) {
 
 const env = (name, fallback = '') => (process.env[name] || fallback).trim();
 
+// A yes/no setting. Only a clear yes or no counts; anything else (a typo, "TRUE ", empty) gives the fallback,
+// so a safety switch can never be turned off by accident.
+export function flag(value, fallback) {
+    const text = String(value ?? '').trim().toLowerCase();
+    if (['true', '1', 'yes', 'on', 'ja'].includes(text)) return true;
+    if (['false', '0', 'no', 'off', 'nee'].includes(text)) return false;
+    return fallback;
+}
+
 export const PORT = Number(env('PORT', '8080'));
 export const PUBLIC_URL = env('PUBLIC_URL', `http://localhost:${PORT}`);
 
@@ -48,8 +57,8 @@ export const exact = {
     paymentCondition: env('EXACT_PAYMENT_CONDITION', 'WS'),
     shippingItem: env('EXACT_SHIPPING_ITEM', 'VERZENDING'),
     // Shopify products that are not in Exact yet are made as new articles (with CAS, UN number etc.)
-    createItems: env('EXACT_CREATE_ITEMS', 'true') === 'true',
-    sendEmail: env('EXACT_SEND_EMAIL', 'true') === 'true',
+    createItems: flag(process.env.EXACT_CREATE_ITEMS, true),
+    sendEmail: flag(process.env.EXACT_SEND_EMAIL, true),
     // Id of the e-mail text (Lay-outs, "Lay-out e-mailtekst"). Empty = the only one there is.
     emailLayout: env('EXACT_EMAIL_LAYOUT'),
     // Id of the e-mail text for credit notes. Empty = the same text as invoices.
@@ -59,7 +68,7 @@ export const exact = {
     // Sender of the invoice e-mails. Empty = the Exact user who connected the app.
     senderEmail: env('EXACT_SENDER_EMAIL'),
     // Safety while testing: only Shopify test orders go to Exact
-    testOrdersOnly: env('EXACT_TEST_ORDERS_ONLY', 'true') === 'true',
+    testOrdersOnly: flag(process.env.EXACT_TEST_ORDERS_ONLY, true),
     pollMinutes: Number(env('EXACT_POLL_MINUTES', '2')),
 };
 
