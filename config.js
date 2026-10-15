@@ -59,6 +59,8 @@ export const exact = {
     // Shopify products that are not in Exact yet are made as new articles (with CAS, UN number etc.)
     createItems: flag(process.env.EXACT_CREATE_ITEMS, true),
     sendEmail: flag(process.env.EXACT_SEND_EMAIL, true),
+    // A copy of every invoice / credit note PDF from Exact in INVOICE_PDF_DIR (the NAS folder)
+    savePdf: flag(process.env.EXACT_SAVE_PDF, true),
     // Id of the e-mail text (Lay-outs, "Lay-out e-mailtekst"). Empty = the only one there is.
     emailLayout: env('EXACT_EMAIL_LAYOUT'),
     // Id of the e-mail text for credit notes. Empty = the same text as invoices.

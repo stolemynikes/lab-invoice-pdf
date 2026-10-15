@@ -57,6 +57,7 @@ De app krijgt een eigen gebruiker zonder beheerrechten, die alleen bij zijn eige
    - `PUBLIC_URL=https://facturen.laboratoriumdiscounter.nl` (het adres uit stap 5)
    - `INVOICE_LINK_SECRET` → een **nieuw** lang geheim (zie README stap 4)
 3. **Verhuis je van een andere computer?** Zet dan het nummerbestand `invoices.db` in `docker/factuur-app/data/`, en de PDF's in de map `facturen`. Anders begint de nummering opnieuw.
+   **Met Exact (`INVOICE_MODE=exact`):** zet ook `exact-token.json` (de Exact-login) in `docker/factuur-app/data/`. **Stop eerst de app op de pc** en start hem daar nooit meer: de Exact-login verandert bij elk gebruik, en twee plekken tegelijk sluiten elkaar buiten. Gaat het toch mis, koppel dan opnieuw met `node scripts/exactConnect.js` (op de pc, met de app uit) en zet het nieuwe bestand op de NAS.
 4. Geef `factuurapp` de juiste rechten: rechtsklik op `docker/factuur-app` → Eigenschappen → Machtiging → `factuurapp` **Lezen/schrijven**. Doe hetzelfde voor de map `facturen`.
 
 ## 5. Cloudflare Tunnel maken

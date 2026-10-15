@@ -11,6 +11,7 @@ import { withExactLock, ExactBusyError, lockPathFor } from '../exact/exactLock.j
 import { getAccessToken } from '../exact/exactClient.js';
 import { flag } from '../config.js';
 import { creditRefundsInExact } from '../exact/exactCredit.js';
+import { saveExactPdf, exactPdfPath } from '../exact/exactPdf.js';
 
 const ACCOUNT = '11111111-1111-1111-1111-111111111111';
 const CONTACT = '22222222-2222-2222-2222-222222222222';
@@ -279,7 +280,7 @@ describe('Exact credit note for a refund', () => {
 
     it('makes a credit note with negative lines that refers to the invoice, and lets Exact e-mail it', async () => {
         const exact = fakeCrediting();
-        expect(await run(exact)).toEqual({ credits: [{ refundId: '9901', number: 26700020, invoiceNumber: 26700012 }], done: true });
+        expect(await run(exact)).toEqual({ credits: [{ refundId: '9901', number: 26700020, invoiceNumber: 26700012, date: '2026-10-12' }], done: true });
 
         const credit = exact.calls.find((c) => c.url.endsWith('/salesinvoice/SalesInvoices')).body;
         expect(credit).toMatchObject({ Type: 8021, YourRef: '#1001 R9901', InvoiceDate: '2026-10-12', InvoiceTo: ACCOUNT, InvoiceToContactPerson: CONTACT });
@@ -464,5 +465,57 @@ describe('Exact safety (review fixes)', () => {
             expect(refreshed).toBe(1);
             expect(JSON.parse(fs.readFileSync(settings.tokenPath, 'utf8')).refreshToken).toBe('r2');
         });
+    });
+});
+
+describe('Exact PDF copy on the NAS', () => {
+    const job = { kind: 'invoice', number: 26700005, orderName: 'LD1008', customerName: 'Labo Janssens BV', date: '2026-10-15' };
+
+    // A fake Exact with one document and its PDF; pdfUrl and pdfBody can be changed per test
+    function fakePdfExact({ pdfUrl = 'https://start.exactonline.nl/docs/SysAttachment.aspx?ID=1', pdfBody = '%PDF-1.4 test', documents = [{ ID: '55555555-5555-5555-5555-555555555555' }] } = {}) {
+        const exact = fakeExact();
+        const downloads = [];
+        exact.settings.fetch = async (url, options = {}) => {
+            const text = decodeURIComponent(String(url));
+            const json = (d) => ({ ok: true, status: 200, json: async () => ({ d }), text: async () => '' });
+            if (text.includes('/documents/Documents')) return json({ results: documents });
+            if (text.includes('/documents/DocumentAttachments')) return json({ results: [{ FileName: 'inv26700005.pdf', Url: pdfUrl }] });
+            downloads.push({ url: text, auth: options.headers?.Authorization });
+            return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(pdfBody).buffer };
+        };
+        return { exact, downloads };
+    }
+
+    it('saves invoices and credit notes in their own folder per year, with order number and name', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nas-'));
+        const { exact } = fakePdfExact();
+        const file = await saveExactPdf(exact.settings, dir, job);
+        expect(file).toBe(path.join(dir, '2026', 'Facturen', 'Invoice 26700005 - LD1008 - Labo Janssens BV.pdf'));
+        expect(fs.readFileSync(file, 'utf8')).toBe('%PDF-1.4 test');
+        expect(exactPdfPath(dir, { ...job, kind: 'credit', number: 26700006 })).toBe(path.join(dir, '2026', 'Creditnotas', 'Credit note 26700006 - LD1008 - Labo Janssens BV.pdf'));
+    });
+
+    it('never sends the Exact login to another website, and only saves real PDFs', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nas-'));
+        const evil = fakePdfExact({ pdfUrl: 'https://evil.example.com/steal' });
+        await expect(saveExactPdf(evil.exact.settings, dir, job)).rejects.toThrow('does not point to Exact');
+        expect(evil.downloads).toEqual([]);
+
+        const notPdf = fakePdfExact({ pdfBody: '<html>login</html>' });
+        await expect(saveExactPdf(notPdf.exact.settings, dir, job)).rejects.toThrow('not a PDF');
+        expect(fs.existsSync(exactPdfPath(dir, job))).toBe(false);
+
+        const missing = fakePdfExact({ documents: [] });
+        await expect(saveExactPdf(missing.exact.settings, dir, job)).rejects.toThrow('no PDF in Exact yet');
+    });
+
+    it('never writes outside the PDF folder, whatever the order or customer is called', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nas-'));
+        for (const name of ['../../evil', '..\\..\\evil', 'C:\\Windows\\x', 'a/b:c*d?"<>|', 'line\r\nbreak']) {
+            const file = exactPdfPath(dir, { ...job, orderName: name, customerName: name });
+            expect(path.dirname(file)).toBe(path.join(dir, '2026', 'Facturen'));
+        }
+        expect(() => exactPdfPath(dir, { ...job, number: '../1' })).toThrow('Not a valid Exact invoice number');
+        expect(() => exactPdfPath(dir, { ...job, date: '../../x' })).toThrow('Not a valid date');
     });
 });

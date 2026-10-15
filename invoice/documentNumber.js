@@ -26,7 +26,7 @@ export function documentFileName(document) {
     return [number, order, name].filter(Boolean).join(' - ');
 }
 
-function cleanForFileName(text, maxLength) {
+export function cleanForFileName(text, maxLength) {
     return String(text)
         .normalize('NFC')
         .replace(/[^\p{L}\p{N} .&'()+,-]/gu, ' ')

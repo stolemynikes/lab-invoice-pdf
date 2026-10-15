@@ -267,7 +267,7 @@ The server checks Shopify every 2 minutes (`EXACT_POLL_MINUTES`) and right away 
 
 **Refunds:** for every refund in Shopify a credit invoice is made in Exact (type 8021, negative lines), with "Uw ref." = `<order> R<refund id>` so a refund is never credited twice. It is only made once the order's invoice is in Exact, its remark refers to that invoice number, and its total must match the refunded amount to the cent (otherwise it stays a concept). Exact processes and e-mails it like an invoice.
 
-Not built yet in this mode: the PDF copy on the NAS.
+**PDF copy on the NAS:** every processed invoice and credit note is downloaded from Exact into `INVOICE_PDF_DIR` (`EXACT_SAVE_PDF=true`): `<year>/Facturen/Invoice 26700005 - LD1008 - Name.pdf` and `<year>/Creditnotas/Credit note 26700006 - LD1008 - Name.pdf`. If Exact is not ready yet, it is tried again later. Needs the right to see documents in Exact.
 
 ## Security
 
@@ -385,7 +385,9 @@ So when a customer calls, type the order number, the invoice number or the compa
 
 ### To do for the Exact Online mode (INVOICE_MODE=exact)
 
-- [ ] **PDF copy on the NAS:** after Exact processes an invoice or credit note, fetch the PDF from Exact and save it as `facturen/<year>/<number> - <order> - <name>.pdf`, so a customer on the phone can be helped without logging in to Exact (needs read access to Documents in Exact)
+- [x] **PDF copy on the NAS:** after Exact processes an invoice or credit note, fetch the PDF from Exact and save it per year in a folder for invoices and one for credit notes, with the kind of document also in the file name (Exact uses one number series for both):
+  `facturen/2026/Facturen/Invoice 26700005 - LD1008 - Company name.pdf` and `facturen/2026/Creditnotas/Credit note 26700006 - LD1008 - Company name.pdf`.
+  Searching for the order number in `facturen/2026` then shows both, so a customer on the phone can be helped without logging in to Exact (needs read access to Documents in Exact)
 - [ ] Hosting on the Synology (Docker + Cloudflare Tunnel). Never run the app on two machines at once: Exact's login (`data/exact-token.json`) only works in one place
 - [ ] Separate invoice e-mail address for business customers (cart field / customer profile)
 - [ ] Company details in Exact (Stamgegevens → Instellingen → Administratie): name HD Beverwijk Trading B.V., KvK, VAT number; also in the real administration

@@ -1,6 +1,7 @@
 import { dutchDate } from '../invoice/money.js';
 import { invoiceOrderInExact, isPaid } from './exactInvoice.js';
 import { creditRefundsInExact } from './exactCredit.js';
+import { saveExactPdf } from './exactPdf.js';
 
 // Asks Shopify every few minutes which orders changed, and makes the Exact invoice (and credit notes) for every
 // paid order that still needs one. Works without a public address (no webhooks needed), so it also runs on a PC.
@@ -26,6 +27,7 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
     const summary = { invoiced: [], errors: [] };
     const orders = await fetchOrdersSince(since.toISOString());
     const retries = readRetries(store);
+    const pdfs = readJson(store, 'exact_pdf_pending', []);
 
     // Failing orders whose next try is due, also when they did not change in Shopify
     for (const [orderId, retry] of Object.entries(retries)) {
@@ -52,12 +54,14 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
             if (result.status === 'invoiced') {
                 summary.invoiced.push(`${order.name} -> ${result.number}`);
                 log(`Exact: invoice ${result.number} for ${order.name}${result.emailed ? ', e-mailed by Exact' : ''}`);
+                pdfs.push(pdfJob(order, 'invoice', result, now));
             }
             // Refunds: a credit note per refund, once the invoice is there
             const { credits, done } = await creditRefundsInExact(order, { settings, seller, invoiceSettings, cache, log });
             for (const credit of credits) {
                 summary.invoiced.push(`${order.name} refund -> ${credit.number}`);
                 log(`Exact: credit note ${credit.number} for ${order.name} (invoice ${credit.invoiceNumber})${settings.sendEmail ? ', e-mailed by Exact' : ''}`);
+                pdfs.push(pdfJob(order, 'credit', credit, now));
             }
             if (done && ['invoiced', 'already invoiced'].includes(result.status)) store.setSetting(doneKey, order.updated_at);
             delete retries[orderId];
@@ -69,15 +73,48 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
         }
     }
 
+    // PDF copies on the NAS. Exact sometimes needs a moment before the PDF is there, so failures wait and retry.
+    if (settings.savePdf) {
+        for (const job of [...pdfs]) {
+            if (job.nextTry > now.getTime()) continue;
+            try {
+                const file = await saveExactPdf(settings, invoiceSettings.pdfDir, job);
+                pdfs.splice(pdfs.indexOf(job), 1);
+                log(`Exact: PDF saved: ${file}`);
+            } catch (error) {
+                job.attempts += 1;
+                job.nextTry = now.getTime() + Math.min(MAX_WAIT_MINUTES, 2 ** job.attempts) * 60 * 1000;
+                if (job.attempts >= MAX_PDF_ATTEMPTS) {
+                    pdfs.splice(pdfs.indexOf(job), 1);
+                    summary.errors.push(`PDF of ${job.number} (${job.orderName}) not saved on the NAS, gave up: ${error.message}`);
+                } else if (job.attempts === 1 || job.attempts % 5 === 0) {
+                    summary.errors.push(`PDF of ${job.number} (${job.orderName}) not saved yet: ${error.message}`);
+                }
+            }
+        }
+    }
+
+    store.setSetting('exact_pdf_pending', JSON.stringify(settings.savePdf ? pdfs : []));
     store.setSetting('exact_retry', JSON.stringify(retries));
     store.setSetting('last_exact_catch_up', now.toISOString());
     return summary;
 }
 
-function readRetries(store) {
+const MAX_PDF_ATTEMPTS = 30;
+
+// A PDF to fetch from Exact: invoice or credit note, with what the file name needs
+function pdfJob(order, kind, document, now) {
+    const address = order.billing_address || order.shipping_address || {};
+    const customerName = address.company || [address.first_name, address.last_name].filter(Boolean).join(' ') || address.name || '';
+    return { kind, number: document.number, orderName: order.name, customerName, date: document.date, attempts: 0, nextTry: now.getTime() };
+}
+
+function readJson(store, key, fallback) {
     try {
-        return JSON.parse(store.getSetting('exact_retry') || '{}');
+        return JSON.parse(store.getSetting(key) || 'null') ?? fallback;
     } catch {
-        return {};
+        return fallback;
     }
 }
+
+const readRetries = (store) => readJson(store, 'exact_retry', {});
