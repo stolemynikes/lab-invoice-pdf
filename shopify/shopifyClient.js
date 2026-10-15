@@ -50,6 +50,25 @@ async function adminGraphql(settings, query, variables) {
     return body.data;
 }
 
+// Product details for a new Exact article: titles, product type, the "custom" metafields
+// (CAS, UN number, ADR class...), and barcode, weight and HS code of the variant. Read only.
+export async function fetchProductDetails(settings, productId, variantId) {
+    const query = `query ProductDetails($product: ID!, $variant: ID!) {
+        product(id: $product) { title productType vendor metafields(first: 100, namespace: "custom") { nodes { key value } } }
+        productVariant(id: $variant) {
+            title sku barcode
+            inventoryItem { harmonizedSystemCode measurement { weight { value unit } } }
+            metafields(first: 20, namespace: "custom") { nodes { key value } }
+        }
+    }`;
+    const data = await adminGraphql(settings, query, {
+        product: `gid://shopify/Product/${Number(productId)}`,
+        variant: `gid://shopify/ProductVariant/${Number(variantId)}`,
+    });
+    const fields = Object.fromEntries([...(data.product?.metafields.nodes || []), ...(data.productVariant?.metafields.nodes || [])].map((m) => [m.key, m.value]));
+    return { product: data.product, variant: data.productVariant, fields };
+}
+
 // Saves the invoice and credit note numbers on the Shopify order (metafields invoice.number,
 // invoice.issue_date and invoice.credit_notes). There are no download links in it on purpose:
 // links are only handed out to the logged-in customer (routes/apiRoute.js).

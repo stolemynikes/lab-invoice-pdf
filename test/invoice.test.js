@@ -10,6 +10,7 @@ import { checkVatId } from '../tax/vies.js';
 import { buildInvoice, findCustomerVatId } from '../invoice/buildInvoice.js';
 import { InvoiceStore } from '../invoice/invoiceStore.js';
 import { createInvoiceForOrder, savePdf } from '../invoice/createInvoice.js';
+import { documentFileName } from '../invoice/documentNumber.js';
 import { webhooksRoute } from '../routes/webhooksRoute.js';
 import { processOrder } from '../invoice/processOrder.js';
 import { sendQueuedEmails } from '../email/emailQueue.js';
@@ -531,6 +532,23 @@ describe('attacks', () => {
         expect(() => store.restoreDocument({ ...draft, orderId: 'x', number: '../../evil-2026-1', issueDate: '2026-10-08' })).toThrow();
         expect(store.findByOrder('x')).toBeNull();
         store.close();
+    });
+
+    it('cleans the order number and customer name in the file name', async () => {
+        const dir = tempDir();
+        const draft = invoiceFor('order-nl-consumer.json');
+        const evil = ['../../evil', '..\\..\\evil', 'C:\\Windows\\x', 'a/b:c*d?"<>|', 'name.', 'line\r\nbreak\0'];
+        for (const company of evil) {
+            const pdfPath = await savePdf({ ...draft, number: 'INV-2026-1', issueDate: '2026-10-08', orderName: company, buyer: { ...draft.buyer, company } }, dir, {});
+            expect(path.dirname(pdfPath)).toBe(path.join(dir, '2026'));
+            expect(path.basename(pdfPath)).toMatch(/^INV-2026-1( - [\p{L}\p{N} .&'()+,-]+)*\.pdf$/u);
+            expect(path.basename(pdfPath)).not.toMatch(/\.\.|[\s.]\.pdf$/);
+        }
+        expect(documentFileName({ number: 'INV-2026-12', orderName: '#LD1234', buyer: { company: 'Müller & Zn. B.V.', name: 'Jan' } }))
+            .toBe('INV-2026-12 - LD1234 - Müller & Zn. B.V');
+        expect(documentFileName({ number: 'CN-2026-3', orderName: 'LD1234', buyer: { company: null, name: 'Jan de Vries' } }))
+            .toBe('CN-2026-3 - LD1234 - Jan de Vries');
+        expect(documentFileName({ number: 'INV-2026-1', orderName: '', buyer: { name: '' } })).toBe('INV-2026-1');
     });
 });
 

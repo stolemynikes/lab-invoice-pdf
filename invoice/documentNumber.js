@@ -15,6 +15,27 @@ export function assertValidDocumentNumber(number) {
     return number;
 }
 
+// File name on the NAS, without extension: "INV-2026-12 - LD1234 - Company BV".
+// The order number and the company (or person) name make the file easy to find with the search bar
+// while a customer is on the phone. Both come from Shopify, so they are cleaned: only letters, digits,
+// spaces and a few safe signs are kept. Never slashes, dots at the end or other path tricks.
+export function documentFileName(document) {
+    const number = assertValidDocumentNumber(document.number);
+    const order = cleanForFileName(String(document.orderName ?? '').replace(/^#/, ''), 20);
+    const name = cleanForFileName(document.buyer?.company || document.buyer?.name || '', 60);
+    return [number, order, name].filter(Boolean).join(' - ');
+}
+
+function cleanForFileName(text, maxLength) {
+    return String(text)
+        .normalize('NFC')
+        .replace(/[^\p{L}\p{N} .&'()+,-]/gu, ' ')
+        .replace(/\.{2,}/g, '.')
+        .replace(/\s+/g, ' ')
+        .slice(0, maxLength)
+        .replace(/^[\s.]+|[\s.]+$/g, '');
+}
+
 // For INVOICE_SERIES / CREDIT_NOTE_SERIES in .env: capitals, digits and dashes only
 export function isValidSeries(series) {
     return typeof series === 'string' && SERIES.test(series);

@@ -32,6 +32,40 @@ export const shopify = {
     clientSecret: env('SHOPIFY_CLIENT_SECRET'),
 };
 
+// Exact Online: the app registered under Import/Export > App-registraties.
+// The login (refresh token) is saved in tokenPath after `npm run exact-connect`; keep that file private.
+export const exact = {
+    clientId: env('EXACT_CLIENT_ID'),
+    clientSecret: env('EXACT_CLIENT_SECRET'),
+    redirectUri: env('EXACT_REDIRECT_URI', 'https://facturen.laboratoriumdiscounter.nl/exact/callback'),
+    baseUrl: env('EXACT_BASE_URL', 'https://start.exactonline.nl'),
+    division: env('EXACT_DIVISION'),
+    // Administrations the app may create or change things in, comma separated. Empty = read only everywhere.
+    writeDivisions: env('EXACT_WRITE_DIVISIONS').split(',').map((code) => code.trim()).filter(Boolean),
+    tokenPath: env('EXACT_TOKEN_PATH', './data/exact-token.json'),
+    // Invoices made by Exact (INVOICE_MODE=exact)
+    journal: env('EXACT_JOURNAL', '70'),
+    paymentCondition: env('EXACT_PAYMENT_CONDITION', 'WS'),
+    shippingItem: env('EXACT_SHIPPING_ITEM', 'VERZENDING'),
+    // Shopify products that are not in Exact yet are made as new articles (with CAS, UN number etc.)
+    createItems: env('EXACT_CREATE_ITEMS', 'true') === 'true',
+    sendEmail: env('EXACT_SEND_EMAIL', 'true') === 'true',
+    // Id of the e-mail text (Lay-outs, "Lay-out e-mailtekst"). Empty = the only one there is.
+    emailLayout: env('EXACT_EMAIL_LAYOUT'),
+    // Id of the e-mail text for credit notes. Empty = the same text as invoices.
+    creditEmailLayout: env('EXACT_CREDIT_EMAIL_LAYOUT'),
+    // Id of the invoice PDF layout (Lay-outs, type Verkoopfactuur). Empty = Exact's default.
+    invoiceLayout: env('EXACT_INVOICE_LAYOUT'),
+    // Sender of the invoice e-mails. Empty = the Exact user who connected the app.
+    senderEmail: env('EXACT_SENDER_EMAIL'),
+    // Safety while testing: only Shopify test orders go to Exact
+    testOrdersOnly: env('EXACT_TEST_ORDERS_ONLY', 'true') === 'true',
+    pollMinutes: Number(env('EXACT_POLL_MINUTES', '2')),
+};
+
+// "app": the app makes its own PDF invoices (INV-2026-1). "exact": Exact Online makes and e-mails the invoices.
+export const INVOICE_MODE = env('INVOICE_MODE', 'app');
+
 export const invoiceSettings = {
     pdfDir: env('INVOICE_PDF_DIR', './data/invoices'),
     databasePath: env('DATABASE_PATH', './data/invoices.db'),

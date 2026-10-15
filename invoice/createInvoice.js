@@ -4,7 +4,7 @@ import { checkVatId } from '../tax/vies.js';
 import { classifyOrder } from '../tax/classifyOrder.js';
 import { buildInvoice, findCustomerVatId } from './buildInvoice.js';
 import { renderInvoice } from '../pdf/renderInvoice.js';
-import { assertValidDocumentNumber } from './documentNumber.js';
+import { assertValidDocumentNumber, documentFileName } from './documentNumber.js';
 
 // The full flow for one Shopify order:
 // check VAT number -> work out VAT situation -> build invoice -> give it a number -> save the PDF
@@ -55,19 +55,22 @@ export async function prepareInvoiceData(order, { seller, settings }) {
     return buildInvoice({ order, seller, classification, vatCheck });
 }
 
-// Saves the PDF (and a JSON copy as backup) to e.g. <pdfDir>/2026/INV-2026-1.pdf
+// Saves the PDF (and a JSON copy as backup) to e.g. <pdfDir>/2026/INV-2026-1 - LD1234 - Company BV.pdf
 // Used for both invoices and credit notes
 export async function savePdf(invoice, pdfDir, brand) {
     // The number and year become folder and file names: only allow the strict format, never "../" or the like
     assertValidDocumentNumber(invoice.number);
+    const pdfPath = pdfPathFor(invoice, pdfDir);
+    fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
+
+    fs.writeFileSync(pdfPath, await renderInvoice(invoice, brand));
+    fs.writeFileSync(pdfPath.replace(/\.pdf$/, '.json'), JSON.stringify(invoice, null, 2));
+    return pdfPath;
+}
+
+// Where the PDF of a document belongs: <pdfDir>/<year>/<file name>.pdf
+export function pdfPathFor(invoice, pdfDir) {
     const year = String(invoice.issueDate).slice(0, 4);
     if (!/^\d{4}$/.test(year)) throw new Error(`Not a valid issue date: ${JSON.stringify(invoice.issueDate)}`);
-
-    const folder = path.join(pdfDir, year);
-    fs.mkdirSync(folder, { recursive: true });
-
-    const pdfPath = path.join(folder, `${invoice.number}.pdf`);
-    fs.writeFileSync(pdfPath, await renderInvoice(invoice, brand));
-    fs.writeFileSync(path.join(folder, `${invoice.number}.json`), JSON.stringify(invoice, null, 2));
-    return pdfPath;
+    return path.join(pdfDir, year, `${documentFileName(invoice)}.pdf`);
 }

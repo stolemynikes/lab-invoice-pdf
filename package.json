@@ -12,7 +12,11 @@
     "catch-up": "node scripts/catchUp.js",
     "restore": "node scripts/restoreFromShopify.js",
     "security-check": "node scripts/securityCheck.js",
-    "test-email": "node scripts/testEmail.js"
+    "test-email": "node scripts/testEmail.js",
+    "exact-connect": "node scripts/exactConnect.js",
+    "check-exact": "node scripts/checkExact.js",
+    "exact-customer": "node scripts/exactCustomer.js",
+    "exact-invoice-order": "node scripts/exactInvoiceOrder.js"
   },
   "type": "module",
   "dependencies": {

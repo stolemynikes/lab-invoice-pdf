@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { seller, shopify, invoiceSettings } from '../config.js';
 import { InvoiceStore } from '../invoice/invoiceStore.js';
-import { prepareInvoiceData, savePdf } from '../invoice/createInvoice.js';
+import { pdfPathFor, prepareInvoiceData, savePdf } from '../invoice/createInvoice.js';
 import { buildCreditNote } from '../invoice/buildCreditNote.js';
 import { dutchDate } from '../invoice/money.js';
 import { fetchDocumentNumbersFromShopify, fetchOrderById } from '../shopify/shopifyClient.js';
@@ -117,8 +117,10 @@ if (plan.length === 0) {
             console.log(`${line} – skipped, already there`);
             continue;
         }
-        const existingPdf = path.join(invoiceSettings.pdfDir, document.issueDate.slice(0, 4), `${document.number}.pdf`);
-        const pdfPath = fs.existsSync(existingPdf) ? existingPdf : await savePdf(document, invoiceSettings.pdfDir, invoiceSettings.brand);
+        // Older files are named by number only (INV-2026-1.pdf); newer ones also carry order and name
+        const year = path.join(invoiceSettings.pdfDir, String(document.issueDate).slice(0, 4));
+        const existingPdf = [pdfPathFor(document, invoiceSettings.pdfDir), path.join(year, `${document.number}.pdf`)].find((file) => fs.existsSync(file));
+        const pdfPath = existingPdf || (await savePdf(document, invoiceSettings.pdfDir, invoiceSettings.brand));
         store.setPdfPath(document.number, pdfPath);
         console.log(line);
     }

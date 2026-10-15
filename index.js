@@ -1,9 +1,11 @@
 import express from 'express';
 
-import { PORT, PUBLIC_URL, seller, shopify, invoiceSettings, checkSellerDetails } from './config.js';
+import fs from 'node:fs';
+import { PORT, PUBLIC_URL, seller, shopify, invoiceSettings, checkSellerDetails, exact, INVOICE_MODE } from './config.js';
 import { InvoiceStore } from './invoice/invoiceStore.js';
 import { runCatchUp } from './invoice/catchUp.js';
-import { fetchOrdersUpdatedSince } from './shopify/shopifyClient.js';
+import { runExactCatchUp } from './exact/exactCatchUp.js';
+import { fetchOrdersUpdatedSince, fetchProductDetails } from './shopify/shopifyClient.js';
 import { saveDocumentNumbers } from './shopify/documentNumbers.js';
 import { createMailer } from './email/mailer.js';
 
@@ -14,7 +16,9 @@ import { apiRoute } from './routes/apiRoute.js';
 import { isValidSeries } from './invoice/documentNumber.js';
 
 //check the settings before starting
-const problems = checkSellerDetails(seller);
+// In Exact mode Exact prints the company details on the invoice, so missing details here are only a warning
+const problems = INVOICE_MODE === 'exact' ? [] : checkSellerDetails(seller);
+if (INVOICE_MODE === 'exact') checkSellerDetails(seller).forEach((problem) => console.log(`Note: ${problem} (not needed while Exact makes the invoices)`));
 if (invoiceSettings.linkSecret.length < 32) problems.push('INVOICE_LINK_SECRET must be a long random text (at least 32 characters)');
 if (!shopify.clientSecret) problems.push('SHOPIFY_CLIENT_SECRET is not filled in');
 if (!shopify.clientId || !shopify.storeDomain) problems.push('SHOPIFY_CLIENT_ID and SHOPIFY_STORE_DOMAIN must be filled in');
@@ -26,6 +30,13 @@ if (invoiceSettings.email.enabled) {
     if (!email.host || !email.user || !email.password || !email.from) {
         problems.push('EMAIL_ENABLED=true, but SMTP_HOST, SMTP_USER, SMTP_PASSWORD or EMAIL_FROM is missing');
     }
+}
+if (!['app', 'exact'].includes(INVOICE_MODE)) problems.push('INVOICE_MODE must be "app" or "exact"');
+if (INVOICE_MODE === 'exact') {
+    if (!exact.division || !exact.writeDivisions.includes(exact.division)) {
+        problems.push('INVOICE_MODE=exact needs EXACT_DIVISION, and that administration in EXACT_WRITE_DIVISIONS');
+    }
+    if (!fs.existsSync(exact.tokenPath)) problems.push('Not connected to Exact yet: run node scripts/exactConnect.js');
 }
 if (!PUBLIC_URL.startsWith('https://') && !PUBLIC_URL.startsWith('http://localhost')) {
     problems.push('PUBLIC_URL must start with https:// (download links must always be encrypted)');
@@ -63,7 +74,8 @@ app.get('/', (req, res) => {
     return res.status(200).send('Invoice generator is running');
 });
 
-app.use('/webhooks', webhooksRoute(store, { mailer }));
+const exactRun = INVOICE_MODE === 'exact' ? startExactCatchUp() : null;
+app.use('/webhooks', webhooksRoute(store, { mailer, onOrderChange: exactRun }));
 app.use('/invoices', invoicesRoute(store));
 app.use('/api', apiRoute(store));
 
@@ -80,9 +92,50 @@ app.use((error, req, res, next) => {
 
 app.listen(PORT, () => {
     console.log(`App is listening to port ${PORT}`);
-    console.log(`Invoices are saved in ${invoiceSettings.pdfDir}`);
-    startCatchUp();
+    if (INVOICE_MODE === 'exact') {
+        console.log(`Invoices are made by Exact (administration ${exact.division})${exact.testOrdersOnly ? ', TEST ORDERS ONLY' : ''}`);
+        exactRun();
+    } else {
+        console.log(`Invoices are saved in ${invoiceSettings.pdfDir}`);
+        startCatchUp();
+    }
 });
+
+// Exact mode: check Shopify every few minutes (EXACT_POLL_MINUTES), and right away when a webhook arrives.
+// Returns the function that starts a round; a round that is still busy is never started twice.
+function startExactCatchUp() {
+    let running = false;
+    let again = false;
+    const run = async () => {
+        if (running) {
+            again = true; // a webhook came in during a round: do one more round after this one
+            return;
+        }
+        running = true;
+        try {
+            const summary = await runExactCatchUp({
+                store,
+                settings: exact,
+                seller,
+                invoiceSettings,
+                fetchOrdersSince: (since) => fetchOrdersUpdatedSince(shopify, since),
+                fetchProduct: (productId, variantId) => fetchProductDetails(shopify, productId, variantId),
+                log: console.log,
+            });
+            summary.errors.forEach((error) => console.log(`  ⚠ ${error}`));
+        } catch (error) {
+            console.log('Exact catch-up could not reach Shopify or Exact, will try again next round:', error.message);
+        } finally {
+            running = false;
+            if (again) {
+                again = false;
+                run();
+            }
+        }
+    };
+    setInterval(run, exact.pollMinutes * 60 * 1000);
+    return run;
+}
 
 //catch-up: right after starting, and then every hour (CATCH_UP_MINUTES)
 function startCatchUp() {

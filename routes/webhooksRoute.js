@@ -5,7 +5,9 @@ import { saveDocumentNumbers } from '../shopify/documentNumbers.js';
 import { processOrder } from '../invoice/processOrder.js';
 import { rateLimit } from './rateLimit.js';
 
-export function webhooksRoute(store, { mailer = null } = {}) {
+// onOrderChange: in Exact mode (INVOICE_MODE=exact) a checked webhook only starts the Exact catch-up right away,
+// which then makes the invoice in Exact. The app's own invoices are not made then.
+export function webhooksRoute(store, { mailer = null, onOrderChange = null } = {}) {
     const router = express.Router();
     // Shopify sends at most a few webhooks per order; this only stops floods of fake ones
     router.use(rateLimit({ max: 300 }));
@@ -14,6 +16,7 @@ export function webhooksRoute(store, { mailer = null } = {}) {
     router.post('/orders-paid', readRawBody, (req, res) => {
         const order = readWebhook(req, res);
         if (!order) return;
+        if (onOrderChange) return onOrderChange();
 
         handlePaidOrder(order, store, mailer).catch((error) => {
             console.log(`Invoice for order ${order.name} failed:`, error.message);
@@ -24,6 +27,7 @@ export function webhooksRoute(store, { mailer = null } = {}) {
     router.post('/refunds-create', readRawBody, (req, res) => {
         const refund = readWebhook(req, res);
         if (!refund) return;
+        if (onOrderChange) return onOrderChange();
 
         handleRefund(refund, store, mailer).catch((error) => {
             console.log(`Credit note for refund ${refund.id} failed:`, error.message);

@@ -237,6 +237,32 @@ Every invoice and credit note is e-mailed to the e-mail address of the order, wi
   4. Set `EMAIL_ENABLED=true`.
 - Preview: `output/preview-email.html`.
 
+---
+
+## Invoices made by Exact Online (INVOICE_MODE=exact)
+
+With `INVOICE_MODE=exact` the app does not make its own PDF invoices. For every **paid** Shopify order it makes the invoice in Exact Online, and Exact gives the number, books it and e-mails the PDF to the customer.
+
+What happens per paid order:
+
+1. **Never twice:** if Exact already has an invoice with the order number in *Uw ref.*, nothing new is made.
+2. **Articles and VAT codes:** every product is looked up in Exact by its SKU (= article code), shipping costs use the article `VERZENDING` (`EXACT_SHIPPING_ITEM`). The VAT code follows country and rate (`exact/exactVatCodes.js`, a proposal until the accountant has confirmed it). If an article or VAT code is missing, **nothing** is made and the reason is shown.
+3. **Customer:** found by VAT number (business) or e-mail address, otherwise created. It always gets a **contact person with the e-mail address**, because Exact e-mails invoices to the contact person.
+4. **Concept invoice** with invoice date = payment date. Its total must be exactly what the customer paid in Shopify, otherwise it stays a concept for you to check.
+5. **Processing:** Exact gives the number, books it in journal 70 (`EXACT_JOURNAL`) and e-mails it (`EXACT_SEND_EMAIL`).
+
+The server checks Shopify every 2 minutes (`EXACT_POLL_MINUTES`) and right away when a Shopify webhook arrives, so it also works on a PC without webhooks.
+
+**Safety while testing:**
+
+- Exact is only written to in the administrations in `EXACT_WRITE_DIVISIONS` (now only the COPY). The real administration is added only after testing.
+- `EXACT_TEST_ORDERS_ONLY=true`: only Shopify **test orders** go to Exact.
+- One order by hand: `npm run exact-invoice-order -- LD1006`.
+
+**Refunds:** for every refund in Shopify a credit invoice is made in Exact (type 8021, negative lines), with "Uw ref." = `<order> R<refund id>` so a refund is never credited twice. It is only made once the order's invoice is in Exact, its remark refers to that invoice number, and its total must match the refunded amount to the cent (otherwise it stays a concept). Exact processes and e-mails it like an invoice.
+
+Not built yet in this mode: the PDF copy on the NAS.
+
 ## Security
 
 ### Who can see and download an invoice
@@ -319,12 +345,14 @@ It never overwrites anything and the numbering continues after the highest resto
 
 ### Archive and backups
 
-PDFs are saved per year, with a JSON copy of the data next to each one:
+PDFs are saved per year, with a JSON copy of the data next to each one. The file name holds the invoice number, the order number and the company name (or the customer's name if there is no company):
 
 ```
-\\NAS\invoices\2026\INV-2026-1.pdf
-\\NAS\invoices\2026\INV-2026-1.json
+\\NAS\invoices\2026\INV-2026-12 - LD1234 - Bedrijfsnaam BV.pdf
+\\NAS\invoices\2026\INV-2026-12 - LD1234 - Bedrijfsnaam BV.json
 ```
+
+So when a customer calls, type the order number, the invoice number or the company name in the search bar of File Station or Windows Explorer. Documents made before this change keep their old name (`INV-2026-1.pdf`).
 
 - Dutch law requires keeping invoices for **7 years**, unchanged and readable.
 - Keep a **second copy somewhere else** (cloud backup of the NAS, or a disk at another location).
@@ -348,6 +376,18 @@ PDFs are saved per year, with a JSON copy of the data next to each one:
 - [ ] **Auto-reply on facturen@** (Hostnet control panel): *"This address is not monitored. Please e-mail info@laboratoriumdiscounter.nl."*
 - [ ] Backups of the PDF folder and the database are running
 - [ ] Accountant has checked a few sample invoices
+
+### To do for the Exact Online mode (INVOICE_MODE=exact)
+
+- [ ] **PDF copy on the NAS:** after Exact processes an invoice or credit note, fetch the PDF from Exact and save it as `facturen/<year>/<number> - <order> - <name>.pdf`, so a customer on the phone can be helped without logging in to Exact (needs read access to Documents in Exact)
+- [ ] Hosting on the Synology (Docker + Cloudflare Tunnel). Never run the app on two machines at once: Exact's login (`data/exact-token.json`) only works in one place
+- [ ] Separate invoice e-mail address for business customers (cart field / customer profile)
+- [ ] Company details in Exact (Stamgegevens → Instellingen → Administratie): name HD Beverwijk Trading B.V., KvK, VAT number; also in the real administration
+- [ ] Outdated OSS VAT rates in Exact updated by the accountant (Finland, Estonia, Slovakia, Romania, Czech Republic)
+- [ ] Sender `facturen@` added in Exact (Administratiemailadressen), then `EXACT_SENDER_EMAIL`
+- [ ] Logo in the invoice layout
+- [ ] Switch to the real administration: `EXACT_DIVISION` / `EXACT_WRITE_DIVISIONS`, `EXACT_TEST_ORDERS_ONLY=false`, layouts made again there (only with the owner's OK)
+- [ ] xCore / GoedGepickt do not book Shopify orders in Exact (no double revenue)
 
 ---
 
