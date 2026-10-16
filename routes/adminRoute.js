@@ -14,14 +14,18 @@ import { saveSettings } from '../admin/settingsFile.js';
 //
 // provider: { name, enabledKey, allowedKeys, status(), fields(), validate(values), actions: { name: async (body) => result } }
 
-export function adminRoute({ adminKey, provider, logBook, restart = () => setTimeout(() => process.exit(0), 300) }) {
+// When this app started
+const STARTED_AT = new Date().toISOString();
+
+export function adminRoute({ adminKey, provider, logBook, restart = () => setTimeout(() => process.exit(0), 300), env = process.env }) {
     const router = express.Router();
     router.use(adminGuard(adminKey));
     router.use(express.json({ limit: '20kb' }));
 
     router.get('/status', async (req, res, next) => {
         try {
-            res.json(await provider.status());
+            // startedAt: the panel sees from this that the app restarted (and tells the colleagues)
+            res.json({ ...(await provider.status()), startedAt: STARTED_AT });
         } catch (error) {
             next(error);
         }
@@ -38,6 +42,14 @@ export function adminRoute({ adminKey, provider, logBook, restart = () => setTim
             saveSettings(values, provider.allowedKeys);
         } catch (error) {
             return res.status(400).json({ message: error.message });
+        }
+        // Settings the app reads at every use (provider.liveKeys, e.g. prices for the numbers) work at once;
+        // everything else is read at the start, so then the app restarts
+        const live = Object.keys(values).every((key) => provider.liveKeys?.includes(key));
+        if (live) {
+            for (const [key, value] of Object.entries(values)) env[key] = String(value);
+            console.log(`Settings changed in the admin panel: ${Object.keys(values).join(', ')} (no restart needed)`);
+            return res.json({ ok: true, restarting: false });
         }
         console.log(`Settings changed in the admin panel: ${Object.keys(values).join(', ')} (restarting)`);
         res.json({ ok: true, restarting: true });

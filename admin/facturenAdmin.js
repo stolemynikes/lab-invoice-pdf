@@ -69,6 +69,7 @@ export function translateLine(text) {
         [/^App is listening/, () => ({ text: 'App gestart.', level: 'ok' })],
         [/^Invoices are made by Exact.*TEST ORDERS ONLY/, () => ({ text: 'Facturen via Exact, alleen voor testorders.', level: 'ok' })],
         [/^Invoices are made by Exact/, () => ({ text: 'Facturen via Exact, voor alle betaalde orders.', level: 'ok' })],
+        [/^Settings changed in the admin panel.*no restart needed/, () => ({ text: 'Instellingen gewijzigd in het paneel (meteen actief, zonder herstart).', level: 'ok' })],
         [/^Settings changed in the admin panel/, () => ({ text: 'Instellingen gewijzigd in het paneel. App start opnieuw.', level: 'ok' })],
         [/switched (on|off) in the admin panel/, (m) => ({ text: `Facturen ${m[1] === 'on' ? 'aangezet' : 'uitgezet'} in het paneel.`, level: 'ok' })],
         [/^Exact connected again from the admin panel/, () => ({ text: 'Exact opnieuw gekoppeld via het paneel.', level: 'ok' })],
