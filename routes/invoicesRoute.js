@@ -3,7 +3,7 @@ import express from 'express';
 import { invoiceSettings } from '../config.js';
 import { checkDownloadLink } from '../invoice/downloadLinks.js';
 import { rateLimit } from './rateLimit.js';
-import { isValidDocumentNumber } from '../invoice/documentNumber.js';
+import { isValidDocumentNumber, isValidExactNumber } from '../invoice/documentNumber.js';
 
 export function invoicesRoute(store, { linkSecret = invoiceSettings.linkSecret } = {}) {
     const router = express.Router();
@@ -13,8 +13,9 @@ export function invoicesRoute(store, { linkSecret = invoiceSettings.linkSecret }
     // The link must be valid, not expired, and made for the customer who owns the document.
     router.get('/:number/download', (req, res) => {
         const { number } = req.params;
-        // Anything that is not a real document number (e.g. "../" or SQL) is refused straight away
-        const customerId = isValidDocumentNumber(number) && checkDownloadLink(number, req.query, linkSecret);
+        // Anything that is not a real document number (e.g. "../" or SQL) is refused straight away.
+        // Exact Online numbers are digits only (26700005).
+        const customerId = (isValidDocumentNumber(number) || isValidExactNumber(number)) && checkDownloadLink(number, req.query, linkSecret);
         const document = customerId && store.findDocument(number);
 
         // Same answer for every problem, so nobody can find out which invoice numbers exist

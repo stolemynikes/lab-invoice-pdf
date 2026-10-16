@@ -16,7 +16,8 @@
     "exact-connect": "node scripts/exactConnect.js",
     "check-exact": "node scripts/checkExact.js",
     "exact-customer": "node scripts/exactCustomer.js",
-    "exact-invoice-order": "node scripts/exactInvoiceOrder.js"
+    "exact-invoice-order": "node scripts/exactInvoiceOrder.js",
+    "nas-package": "node scripts/makeNasPackage.js"
   },
   "type": "module",
   "dependencies": {

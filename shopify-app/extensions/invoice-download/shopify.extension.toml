@@ -1,8 +1,9 @@
 api_version = "2026-07"
 
 [[extensions]]
-name = "Factuur downloaden"
+name = "Invoice download"
 handle = "invoice-download"
+uid = "4d72f8fc-d30d-f51b-2e94-1bd4835b767bcf620f28"
 type = "ui_extension"
 
 # The block on the order page in the customer account ("Bestelling")

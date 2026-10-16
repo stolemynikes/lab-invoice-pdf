@@ -1,0 +1,20 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "5a796c17ed29898f4f2d1eca338bdc5b"
+application_url = "https://shopify.dev/apps/default-app-home"
+embedded = true
+name = "Facturen"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+# Only what the invoice app needs: read orders (and refunds), read products (CAS, UN number for new Exact articles)
+scopes = "read_orders,read_products"
+
+[auth]
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+
+[webhooks]
+api_version = "2027-01"
+
+[build]
+automatically_update_urls_on_dev = true

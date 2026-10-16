@@ -10,6 +10,11 @@ export function isValidDocumentNumber(number) {
     return typeof number === 'string' && DOCUMENT_NUMBER.test(number);
 }
 
+// An invoice number from Exact Online (INVOICE_MODE=exact): digits only, e.g. 26700005
+export function isValidExactNumber(number) {
+    return typeof number === 'string' && /^\d{1,12}$/.test(number);
+}
+
 export function assertValidDocumentNumber(number) {
     if (!isValidDocumentNumber(number)) throw new Error(`Not a valid document number: ${JSON.stringify(String(number).slice(0, 40))}`);
     return number;

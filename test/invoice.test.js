@@ -1,3 +1,4 @@
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -438,6 +439,73 @@ describe('customer account access', () => {
             // ...but not for the other customer's invoice, even with a valid-looking link
             const stolen = link.replace(encodeURIComponent(mine.invoice.number), encodeURIComponent(theirs.invoice.number));
             expect((await fetch(stolen)).status).toBe(403);
+        } finally {
+            server.close();
+            store.close();
+        }
+    });
+
+    it('shows and downloads Exact invoices and credit notes only for their own customer', async () => {
+        const dir = tempDir();
+        const store = new InvoiceStore(path.join(dir, 'test.db'));
+        const pdf = (name) => {
+            const file = path.join(dir, `${name}.pdf`);
+            fs.writeFileSync(file, '%PDF-1.4 exact');
+            return file;
+        };
+        const doc = { orderId: '11', orderName: 'LD1008', orderDate: '2026-10-15', customerId: '555', issueDate: '2026-10-15', currency: 'EUR' };
+        store.saveExactDocument({ ...doc, number: 26700005, kind: 'invoice', total: 2837 });
+        store.saveExactDocument({ ...doc, number: 26700006, kind: 'credit', total: -2837 });
+        store.saveExactDocument({ ...doc, number: 26700007, kind: 'invoice', total: 1000, orderId: '12', orderName: 'LD1009', customerId: '777' });
+        store.setExactPdfPath(26700005, pdf('a'));
+        store.setExactPdfPath(26700006, pdf('b'));
+        store.setExactPdfPath(26700007, pdf('c'));
+
+        const app = express();
+        app.use('/api', apiRoute(store, { shopifySettings, linkSecret: 'link-secret', publicUrl: 'http://placeholder' }));
+        app.use('/invoices', invoicesRoute(store, { linkSecret: 'link-secret' }));
+        const server = app.listen(0);
+        const base = `http://127.0.0.1:${server.address().port}`;
+        try {
+            const { documents } = await (await fetch(`${base}/api/documents`, { headers: { Authorization: `Bearer ${sessionToken({})}` } })).json();
+            expect(documents).toHaveLength(1);
+            expect(documents[0]).toMatchObject({ orderName: 'LD1008', total: 2837, invoice: { number: '26700005' }, creditNotes: [{ number: '26700006' }] });
+
+            const link = documents[0].invoice.url.replace('http://placeholder', base);
+            expect((await fetch(link)).status).toBe(200);
+            expect((await fetch(documents[0].creditNotes[0].url.replace('http://placeholder', base))).status).toBe(200);
+            // The other customer's Exact invoice: refused, even with a valid-looking link
+            expect((await fetch(link.replace('26700005', '26700007'))).status).toBe(403);
+            expect((await fetch(`${base}/invoices/..%2F26700005/download`)).status).toBe(403);
+        } finally {
+            server.close();
+            store.close();
+        }
+    });
+
+    it('with PUBLIC_URL=auto, builds links on the address the request came in on, and refuses a strange host', async () => {
+        const dir = tempDir();
+        const store = new InvoiceStore(path.join(dir, 'test.db'));
+        const settings = { pdfDir: path.join(dir, 'pdfs'), series: 'INV', creditSeries: 'CN', viesEnabled: false };
+        await createInvoiceForOrder({ ...loadOrder('order-nl-consumer.json'), id: 1, financial_status: 'paid', customer: { id: 555 } }, { store, seller, settings });
+        const app = express();
+        app.use('/api', apiRoute(store, { shopifySettings, linkSecret: 'link-secret', publicUrl: 'auto' }));
+        const server = app.listen(0);
+        const port = server.address().port;
+        // fetch() cannot send a wrong Host header, so this uses node:http
+        const ask = (host) =>
+            new Promise((resolve, reject) => {
+                const request = http.get({ port, path: '/api/documents', headers: { Host: host, Authorization: `Bearer ${sessionToken({})}` } }, (response) => {
+                    let body = '';
+                    response.on('data', (chunk) => (body += chunk));
+                    response.on('end', () => resolve({ status: response.statusCode, body }));
+                });
+                request.on('error', reject);
+            });
+        try {
+            const ok = await ask('lucky-words.trycloudflare.com');
+            expect(JSON.parse(ok.body).documents[0].invoice.url).toMatch(/^https:\/\/lucky-words\.trycloudflare\.com\/invoices\//);
+            expect((await ask('evil.com/x?')).status).toBe(400);
         } finally {
             server.close();
             store.close();

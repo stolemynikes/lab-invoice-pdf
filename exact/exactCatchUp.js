@@ -55,6 +55,7 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
                 summary.invoiced.push(`${order.name} -> ${result.number}`);
                 log(`Exact: invoice ${result.number} for ${order.name}${result.emailed ? ', e-mailed by Exact' : ''}`);
                 pdfs.push(pdfJob(order, 'invoice', result, now));
+                saveForCustomer(store, order, 'invoice', result);
             }
             // Refunds: a credit note per refund, once the invoice is there
             const { credits, done } = await creditRefundsInExact(order, { settings, seller, invoiceSettings, cache, log });
@@ -62,6 +63,7 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
                 summary.invoiced.push(`${order.name} refund -> ${credit.number}`);
                 log(`Exact: credit note ${credit.number} for ${order.name} (invoice ${credit.invoiceNumber})${settings.sendEmail ? ', e-mailed by Exact' : ''}`);
                 pdfs.push(pdfJob(order, 'credit', credit, now));
+                saveForCustomer(store, order, 'credit', credit);
             }
             if (done && ['invoiced', 'already invoiced'].includes(result.status)) store.setSetting(doneKey, order.updated_at);
             delete retries[orderId];
@@ -80,6 +82,7 @@ export async function runExactCatchUp({ store, settings, seller, invoiceSettings
             try {
                 const file = await saveExactPdf(settings, invoiceSettings.pdfDir, job);
                 pdfs.splice(pdfs.indexOf(job), 1);
+                store.setExactPdfPath(job.number, file);
                 log(`Exact: PDF saved: ${file}`);
             } catch (error) {
                 job.attempts += 1;
@@ -118,3 +121,18 @@ function readJson(store, key, fallback) {
 }
 
 const readRetries = (store) => readJson(store, 'exact_retry', {});
+
+// Remembers the Exact document for the customer account (the "Factuur" card and the "Facturen" page)
+function saveForCustomer(store, order, kind, document) {
+    store.saveExactDocument({
+        number: document.number,
+        kind,
+        orderId: order.id,
+        orderName: order.name,
+        orderDate: document.orderDate,
+        customerId: order.customer?.id ?? null,
+        issueDate: document.date,
+        total: document.total,
+        currency: document.currency,
+    });
+}

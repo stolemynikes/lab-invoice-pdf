@@ -215,7 +215,7 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
 
     // 5. Process: number, booking and e-mail
     const number = await processInExact(settings, invoice.InvoiceID, invoiceData.paidDate, cache);
-    return { status: 'invoiced', number, date: invoiceData.paidDate, emailed: settings.sendEmail, warnings: invoiceData.warnings };
+    return { status: 'invoiced', number, date: invoiceData.paidDate, orderDate: invoiceData.orderDate, total: expectedTotal, currency: invoiceData.currency, emailed: settings.sendEmail, warnings: invoiceData.warnings };
 }
 
 // Lets Exact process a concept invoice or credit note: it gets its number, is booked and e-mailed.

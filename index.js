@@ -41,7 +41,7 @@ if (INVOICE_MODE === 'exact') {
     // A wrong value (0, "2m") would make the server ask Shopify and Exact non-stop
     if (!Number.isFinite(exact.pollMinutes) || exact.pollMinutes < 1) problems.push('EXACT_POLL_MINUTES must be a number of at least 1');
 }
-if (!PUBLIC_URL.startsWith('https://') && !PUBLIC_URL.startsWith('http://localhost')) {
+if (PUBLIC_URL !== 'auto' && !PUBLIC_URL.startsWith('https://') && !PUBLIC_URL.startsWith('http://localhost')) {
     problems.push('PUBLIC_URL must start with https:// (download links must always be encrypted)');
 }
 if (problems.length > 0) {

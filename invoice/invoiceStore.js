@@ -53,6 +53,20 @@ export class InvoiceStore {
                 last_error TEXT,
                 sent_at TEXT
             );
+            -- Invoices and credit notes made by Exact Online (INVOICE_MODE=exact). Exact is the real administration;
+            -- this list is only so the customer account can show and download them (the PDF is the copy on the NAS).
+            CREATE TABLE IF NOT EXISTS exact_documents (
+                number TEXT PRIMARY KEY,      -- Exact's invoice number, digits only
+                kind TEXT NOT NULL,           -- invoice or credit
+                order_id TEXT NOT NULL,
+                order_name TEXT NOT NULL,
+                order_date TEXT,
+                customer_id TEXT,             -- Shopify customer id; empty for guest checkouts
+                issue_date TEXT NOT NULL,
+                total INTEGER NOT NULL,       -- cents, as paid (credit notes negative)
+                currency TEXT NOT NULL,
+                pdf_path TEXT
+            );
         `);
         // An e-mail that was being sent when the app stopped is tried again
         this.db.exec("UPDATE email_queue SET status = 'pending' WHERE status = 'sending'");
@@ -230,13 +244,14 @@ export class InvoiceStore {
 
     // All invoices of one Shopify customer, newest first, each with its credit notes
     documentsForCustomer(customerId) {
-        return this.db
+        const own = this.db
             .prepare("SELECT data FROM invoices WHERE json_extract(data, '$.customerId') = ? ORDER BY issue_date DESC, rowid DESC")
             .all(String(customerId))
             .map((row) => {
                 const invoice = JSON.parse(row.data);
                 return { invoice, creditNotes: this.creditNotesForOrder(invoice.orderId) };
             });
+        return [...own, ...this.exactDocumentsForCustomer(customerId)];
     }
 
     // An invoice or credit note by its number
@@ -244,7 +259,49 @@ export class InvoiceStore {
         const row =
             this.db.prepare('SELECT data FROM invoices WHERE number = ?').get(number) ||
             this.db.prepare('SELECT data FROM credit_notes WHERE number = ?').get(number);
-        return row ? JSON.parse(row.data) : null;
+        if (row) return JSON.parse(row.data);
+        const exact = this.db.prepare('SELECT * FROM exact_documents WHERE number = ?').get(String(number));
+        return exact ? { number: exact.number, customerId: exact.customer_id || null, orderId: exact.order_id } : null;
+    }
+
+    // ---------- documents made by Exact Online ----------
+
+    // Remembers an Exact invoice or credit note (once; a second time changes nothing)
+    saveExactDocument({ number, kind, orderId, orderName, orderDate, customerId, issueDate, total, currency }) {
+        this.db
+            .prepare(
+                `INSERT INTO exact_documents (number, kind, order_id, order_name, order_date, customer_id, issue_date, total, currency)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(number) DO NOTHING`,
+            )
+            .run(String(number), kind, String(orderId), String(orderName), orderDate ?? null, customerId ? String(customerId) : null, issueDate, total, currency);
+    }
+
+    setExactPdfPath(number, pdfPath) {
+        this.db.prepare('UPDATE exact_documents SET pdf_path = ? WHERE number = ?').run(pdfPath, String(number));
+    }
+
+    // In the same shape as documentsForCustomer: per order the invoice, with its credit notes
+    exactDocumentsForCustomer(customerId) {
+        const rows = this.db
+            .prepare('SELECT * FROM exact_documents WHERE customer_id = ? ORDER BY issue_date DESC, rowid DESC')
+            .all(String(customerId));
+        return rows
+            .filter((row) => row.kind === 'invoice')
+            .map((row) => ({
+                invoice: {
+                    number: row.number,
+                    orderId: row.order_id,
+                    orderName: row.order_name,
+                    orderDate: row.order_date,
+                    issueDate: row.issue_date,
+                    totals: { gross: row.total },
+                    currency: row.currency,
+                },
+                creditNotes: rows
+                    .filter((credit) => credit.kind === 'credit' && credit.order_id === row.order_id)
+                    .reverse()
+                    .map((credit) => ({ number: credit.number, issueDate: credit.issue_date })),
+            }));
     }
 
     // Is there an invoice or credit note with this number?
@@ -300,7 +357,8 @@ export class InvoiceStore {
     getPdfPath(number) {
         const row =
             this.db.prepare('SELECT pdf_path FROM invoices WHERE number = ?').get(number) ||
-            this.db.prepare('SELECT pdf_path FROM credit_notes WHERE number = ?').get(number);
+            this.db.prepare('SELECT pdf_path FROM credit_notes WHERE number = ?').get(number) ||
+            this.db.prepare('SELECT pdf_path FROM exact_documents WHERE number = ?').get(String(number));
         return row?.pdf_path ?? null;
     }
 

@@ -103,7 +103,7 @@ export async function creditRefundsInExact(order, { settings, seller, invoiceSet
         }
 
         const number = await processInExact(settings, credit.InvoiceID, creditData.refundDate, cache, { creditNote: true });
-        credits.push({ refundId: String(refund.id), number, invoiceNumber: invoice.InvoiceNumber, date: creditData.refundDate });
+        credits.push({ refundId: String(refund.id), number, invoiceNumber: invoice.InvoiceNumber, date: creditData.refundDate, orderDate: invoiceData.orderDate, total: creditData.totals.gross, currency: creditData.currency });
     }
     return { credits, done: true };
 }

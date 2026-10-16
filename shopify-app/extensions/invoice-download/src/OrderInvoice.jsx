@@ -21,7 +21,6 @@ function OrderInvoice() {
     const orderId = shopify.order.value?.id;
     const [document, setDocument] = useState(undefined); // undefined = loading, null = no invoice yet
     const [failed, setFailed] = useState(false);
-    const [loggedOut, setLoggedOut] = useState(false);
 
     useEffect(() => {
         const load = () =>
@@ -30,14 +29,12 @@ function OrderInvoice() {
                     setDocument(documents[0] ?? null);
                     setFailed(false);
                 })
-                .catch((error) => (error.status === 401 ? setLoggedOut(true) : setFailed(true)));
+                // The card always stays visible: when the invoice cannot be fetched it says so, and tries again later
+                .catch(() => setFailed(true));
         load();
         const timer = setInterval(load, REFRESH_MINUTES * 60 * 1000);
         return () => clearInterval(timer);
     }, [orderId]);
-
-    // Not logged in (e.g. a guest): show nothing, invoices are only for the logged-in customer
-    if (loggedOut) return null;
 
     const subtitle = failed
         ? i18n.translate('error')

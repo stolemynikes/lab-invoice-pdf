@@ -280,7 +280,9 @@ describe('Exact credit note for a refund', () => {
 
     it('makes a credit note with negative lines that refers to the invoice, and lets Exact e-mail it', async () => {
         const exact = fakeCrediting();
-        expect(await run(exact)).toEqual({ credits: [{ refundId: '9901', number: 26700020, invoiceNumber: 26700012, date: '2026-10-12' }], done: true });
+        const outcome = await run(exact);
+        expect(outcome.done).toBe(true);
+        expect(outcome.credits).toMatchObject([{ refundId: '9901', number: 26700020, invoiceNumber: 26700012, date: '2026-10-12', total: -11495, currency: 'EUR' }]);
 
         const credit = exact.calls.find((c) => c.url.endsWith('/salesinvoice/SalesInvoices')).body;
         expect(credit).toMatchObject({ Type: 8021, YourRef: '#1001 R9901', InvoiceDate: '2026-10-12', InvoiceTo: ACCOUNT, InvoiceToContactPerson: CONTACT });

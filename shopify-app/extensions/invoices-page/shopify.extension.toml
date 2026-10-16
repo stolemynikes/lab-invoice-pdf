@@ -1,8 +1,9 @@
 api_version = "2026-07"
 
 [[extensions]]
-name = "Facturen"
+name = "Invoices"
 handle = "invoices-page"
+uid = "54c655f3-9c04-272b-4e82-3333daf704e78fb1d16d"
 type = "ui_extension"
 
 # An extra page in the customer account: a list of all invoices and credit notes

@@ -32,10 +32,11 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: factuur-tunnel
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      # From the Cloudflare dashboard (Zero Trust → Networks → Tunnels), put in .env
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    # TEST: quick tunnel, like Kasper. No Cloudflare account needed: a random https://….trycloudflare.com address,
+    # shown in the log of this container. It changes after every restart.
+    # For going live this becomes a fixed tunnel with an own address:
+    #   command: tunnel --no-autoupdate run   +   environment: TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate --url http://factuur-app:8080
     depends_on:
       - factuur-app
     networks:

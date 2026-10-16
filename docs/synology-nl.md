@@ -62,6 +62,12 @@ De app krijgt een eigen gebruiker zonder beheerrechten, die alleen bij zijn eige
 
 ## 5. Cloudflare Tunnel maken
 
+> **Test (nu):** `docker-compose.yml` gebruikt een **quick tunnel**, net als Kasper. Geen Cloudflare-account nodig.
+> Zet in `.env`: `PUBLIC_URL=auto`. Na het starten staat in **Container → factuur-tunnel → Logboek** een regel met
+> **`trycloudflare.com`**, bijvoorbeeld `https://lucky-words-here.trycloudflare.com`. Controleer: dat adres in je browser →
+> **Invoice generator is running**. Dat adres verandert na elke herstart. Voor de livegang volgen de stappen hieronder
+> (vaste tunnel met eigen adres).
+
 1. Log in op **dash.cloudflare.com** → **Zero Trust** → **Networks → Tunnels → Create a tunnel**.
 2. Kies **Cloudflared**, naam: `factuur-app`.
 3. Kies als omgeving **Docker** en kopieer alleen het **token** (de lange tekst na `--token`). Zet het in `.env` bij `CLOUDFLARE_TUNNEL_TOKEN=`. **Deel het met niemand.**

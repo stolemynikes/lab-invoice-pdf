@@ -34,11 +34,16 @@ export function apiRoute(store, { shopifySettings = shopify, linkSecret = invoic
             const token = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
             ({ customerId } = verifySessionToken(token, shopifySettings));
         } catch (error) {
+            // Shown in the log, so a wrong SHOPIFY_CLIENT_ID / SECRET is easy to spot (the token itself is never logged)
+            console.log(`Customer account: session token refused (${error.message})`);
             return res.status(401).send({ message: error.message });
         }
 
         const orderId = String(req.query.order || '').match(/(\d+)$/)?.[1];
-        const link = (number) => downloadUrl(publicUrl, number, customerId, linkSecret);
+        // PUBLIC_URL=auto (test with a quick tunnel whose address changes): the links use the address this request came in on
+        const base = publicUrl === 'auto' ? addressOf(req) : publicUrl;
+        if (!base) return res.status(400).send({ message: 'Request not accepted' });
+        const link = (number) => downloadUrl(base, number, customerId, linkSecret);
 
         const documents = store
             .documentsForCustomer(customerId)
@@ -61,4 +66,10 @@ export function apiRoute(store, { shopifySettings = shopify, linkSecret = invoic
     });
 
     return router;
+}
+
+// "https://<host>" of the request, only when the host is a plain host name (nothing that could change the link)
+function addressOf(req) {
+    const host = String(req.get('host') || '');
+    return /^[a-z0-9.-]{1,253}(:\d{1,5})?$/i.test(host) ? `https://${host}` : null;
 }
