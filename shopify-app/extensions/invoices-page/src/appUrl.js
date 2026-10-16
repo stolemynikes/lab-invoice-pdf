@@ -1,6 +1,6 @@
 // The public address of the invoice app (the same as PUBLIC_URL in its .env), without a slash at the end.
 // CHANGE THIS before running `shopify app deploy`. TEST: the quick tunnel on the NAS; it changes after every restart.
-export const APP_URL = 'https://toe-scan-donation-interstate.trycloudflare.com';
+export const APP_URL = 'https://transmitted-edge-wind-affected.trycloudflare.com';
 
 // Asks the invoice app for the documents of the logged-in customer.
 // The session token proves to the app who is logged in; the app only sends back that customer's own documents,

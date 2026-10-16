@@ -1,7 +1,20 @@
 import express from 'express';
 
 import fs from 'node:fs';
-import { PORT, PUBLIC_URL, seller, shopify, invoiceSettings, checkSellerDetails, exact, INVOICE_MODE } from './config.js';
+import { PORT, PUBLIC_URL, seller, shopify, invoiceSettings, checkSellerDetails, exact, INVOICE_MODE, ADMIN_KEY } from './config.js';
+import { createLogBook } from './admin/logBook.js';
+import { createFacturenAdmin, translateLine } from './admin/facturenAdmin.js';
+import { health, markOk, markFailed } from './admin/health.js';
+import { adminRoute } from './routes/adminRoute.js';
+
+// Everything the app writes to the console also goes to the logbook of the NAS admin panel (data/logs, 30 days)
+const logBook = createLogBook({ translate: translateLine });
+logBook.install();
+logBook.prune();
+setInterval(() => logBook.prune(), 24 * 60 * 60 * 1000).unref();
+
+// Switched off in the admin panel: the server keeps running (status, downloads), but makes no new invoices
+const INVOICE_ENABLED = process.env.INVOICE_ENABLED !== 'false';
 import { InvoiceStore } from './invoice/invoiceStore.js';
 import { runCatchUp } from './invoice/catchUp.js';
 import { runExactCatchUp } from './exact/exactCatchUp.js';
@@ -77,10 +90,16 @@ app.get('/', (req, res) => {
     return res.status(200).send('Invoice generator is running');
 });
 
-const exactRun = INVOICE_MODE === 'exact' ? startExactCatchUp() : null;
-app.use('/webhooks', webhooksRoute(store, { mailer, onOrderChange: exactRun }));
+const exactRun = INVOICE_ENABLED && INVOICE_MODE === 'exact' ? startExactCatchUp() : null;
+// Exact mode: a webhook only starts a round (or does nothing when switched off). It never makes the app's own invoices.
+app.use('/webhooks', webhooksRoute(store, { mailer, onOrderChange: !INVOICE_ENABLED ? () => {} : INVOICE_MODE === 'exact' ? exactRun : null }));
 app.use('/invoices', invoicesRoute(store));
 app.use('/api', apiRoute(store));
+// Only for the NAS admin panel, inside the NAS (see admin/adminAuth.js). Without ADMIN_KEY these routes do not exist.
+if (ADMIN_KEY) {
+    const provider = createFacturenAdmin({ store, exact, invoiceSettings, runNow: () => exactRun?.() });
+    app.use('/internal/admin', adminRoute({ adminKey: ADMIN_KEY, provider, logBook }));
+}
 
 // Unknown addresses: a plain "not found", nothing more
 app.use((req, res) => res.status(404).send({ message: 'Not found' }));
@@ -95,7 +114,9 @@ app.use((error, req, res, next) => {
 
 app.listen(PORT, () => {
     console.log(`App is listening to port ${PORT}`);
-    if (INVOICE_MODE === 'exact') {
+    if (!INVOICE_ENABLED) {
+        console.log('Invoices are switched off in the admin panel: no new invoices are made');
+    } else if (INVOICE_MODE === 'exact') {
         console.log(`Invoices are made by Exact (administration ${exact.division})${exact.testOrdersOnly ? ', TEST ORDERS ONLY' : ''}`);
         exactRun();
     } else {
@@ -130,8 +151,15 @@ function startExactCatchUp() {
                 }),
             );
             summary.errors.forEach((error) => console.log(`  ⚠ ${error}`));
+            // For the status in the admin panel: Shopify answered; Exact too, unless its login was refused
+            markOk('shopify');
+            const loginRefused = summary.errors.find((error) => /Exact refused the login/.test(error));
+            if (loginRefused) markFailed('exact', loginRefused);
+            else markOk('exact');
+            health.lastRound = new Date().toISOString();
         } catch (error) {
             if (error instanceof ExactBusyError) return; // a script is busy; the next round picks it up
+            markFailed(/Shopify/i.test(error.message) ? 'shopify' : 'exact', error);
             console.log('Exact catch-up could not reach Shopify or Exact, will try again next round:', error.message);
         } finally {
             running = false;

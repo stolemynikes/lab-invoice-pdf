@@ -60,7 +60,28 @@ De app krijgt een eigen gebruiker zonder beheerrechten, die alleen bij zijn eige
    **Met Exact (`INVOICE_MODE=exact`):** zet ook `exact-token.json` (de Exact-login) in `docker/factuur-app/data/`. **Stop eerst de app op de pc** en start hem daar nooit meer: de Exact-login verandert bij elk gebruik, en twee plekken tegelijk sluiten elkaar buiten. Gaat het toch mis, koppel dan opnieuw met `node scripts/exactConnect.js` (op de pc, met de app uit) en zet het nieuwe bestand op de NAS.
 4. Geef `factuurapp` de juiste rechten: rechtsklik op `docker/factuur-app` → Eigenschappen → Machtiging → `factuurapp` **Lezen/schrijven**. Doe hetzelfde voor de map `facturen`.
 
-## 5. Cloudflare Tunnel maken
+## 5. Tunnel kiezen
+
+Welke tunnel de app bereikbaar maakt, kies je in `.env` met **`COMPOSE_PROFILES`**. Er hoeft geen code te veranderen:
+
+| `COMPOSE_PROFILES=` | Adres | Nodig in `.env` |
+| --- | --- | --- |
+| `quick` | willekeurig `https://….trycloudflare.com`, **verandert na elke herstart** (alleen om te testen) | niets |
+| `ngrok` | **vast**: gratis `https://<naam>.ngrok-free.app`, of je eigen subdomein (betaald plan + CNAME bij je host, bv. Hostnet) | `NGROK_AUTHTOKEN`, `NGROK_DOMAIN` |
+| `cloudflare` | **vast**, op een domein dat bij Cloudflare staat | `CLOUDFLARE_TUNNEL_TOKEN` |
+
+Zet daarbij `PUBLIC_URL=auto` (werkt met elke tunnel). Na het wisselen: Project → **Stoppen → Action → Clean → Starten**.
+Het adres staat in het **Logboek van `factuur-tunnel`**. Bij een vast adres zet je dat één keer in de Shopify-extensies
+(`shopify-app/extensions/*/src/appUrl.js`) en doe je één keer `shopify app deploy`.
+
+**ngrok met eigen subdomein (bijv. `facturen.laboratoriumdiscounter.nl`):** ngrok-account → Domains → domein toevoegen →
+je krijgt een CNAME-waarde (`….ngrok-cname.com`). Bij Hostnet: Controlepaneel → Domeinnamen → DNS → record **CNAME**,
+naam `facturen`, waarde die CNAME. Website en e-mail veranderen daar niet door.
+
+> Ziet Container Manager de keuze niet (er start geen `factuur-tunnel`)? Haal dan in `docker-compose.yml` bij de gekozen
+> tunnel de regel `profiles: [...]` weg.
+
+### Cloudflare Tunnel (alleen als je domein bij Cloudflare staat)
 
 > **Test (nu):** `docker-compose.yml` gebruikt een **quick tunnel**, net als Kasper. Geen Cloudflare-account nodig.
 > Zet in `.env`: `PUBLIC_URL=auto`. Na het starten staat in **Container → factuur-tunnel → Logboek** een regel met

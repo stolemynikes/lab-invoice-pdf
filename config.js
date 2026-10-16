@@ -1,9 +1,16 @@
 import fs from 'node:fs';
+import { applySettingsFile } from './admin/settingsFile.js';
+import { ALLOWED_KEYS } from './admin/allowedKeys.js';
 
 // Load settings from the .env file (if it exists)
 if (fs.existsSync('.env')) {
     process.loadEnvFile('.env');
 }
+// Settings changed in the NAS admin panel (data/settings.json) go before .env
+applySettingsFile(ALLOWED_KEYS);
+
+// The internal admin routes for the NAS admin panel only work with this key (same value in the panel's .env)
+export const ADMIN_KEY = (process.env.ADMIN_KEY || '').trim();
 
 const env = (name, fallback = '') => (process.env[name] || fallback).trim();
 
