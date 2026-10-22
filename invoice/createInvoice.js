@@ -3,7 +3,6 @@ import path from 'node:path';
 import { checkVatId } from '../tax/vies.js';
 import { classifyOrder } from '../tax/classifyOrder.js';
 import { buildInvoice, findCustomerVatId } from './buildInvoice.js';
-import { renderInvoice } from '../pdf/renderInvoice.js';
 import { assertValidDocumentNumber, documentFileName } from './documentNumber.js';
 
 // The full flow for one Shopify order:
@@ -63,6 +62,9 @@ export async function savePdf(invoice, pdfDir, brand) {
     const pdfPath = pdfPathFor(invoice, pdfDir);
     fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
 
+    // The PDF maker (with its fonts) is only loaded the first time a PDF is made, then Node keeps it.
+    // In Exact mode Exact makes the PDFs, so it never takes up RAM there.
+    const { renderInvoice } = await import('../pdf/renderInvoice.js');
     fs.writeFileSync(pdfPath, await renderInvoice(invoice, brand));
     fs.writeFileSync(pdfPath.replace(/\.pdf$/, '.json'), JSON.stringify(invoice, null, 2));
     return pdfPath;
