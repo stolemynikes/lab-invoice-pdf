@@ -181,8 +181,7 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
             const details = productDetails.get(item.variant_id) || (await fetchProduct(item.product_id, item.variant_id));
             const id = await createItemFromShopify(settings, details, line, cache);
             for (const exactLine of lines) if (exactLine.Item === `new:${item.sku}`) exactLine.Item = id;
-            log(`Exact: new article ${item.sku} made (${details.product?.title ?? ''})`);
-        }
+            log(`Exact: new article ${item.sku} made (${details.product?.title ?? ''})`);        }
 
         // 3. Customer with contact person
         const customer = await ensureCustomer(settings, customerForExact(order, invoiceData));

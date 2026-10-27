@@ -12,6 +12,7 @@ import { getAccessToken } from '../exact/exactClient.js';
 import { flag } from '../config.js';
 import { creditRefundsInExact } from '../exact/exactCredit.js';
 import { saveExactPdf, exactPdfPath } from '../exact/exactPdf.js';
+import { itemFromShopify } from '../exact/exactItem.js';
 
 const ACCOUNT = '11111111-1111-1111-1111-111111111111';
 const CONTACT = '22222222-2222-2222-2222-222222222222';
@@ -204,6 +205,13 @@ describe('Exact invoice for a paid order', () => {
         expect(invoice.body.SalesInvoiceLines[1].Item).toBe('item-new');
         // CAS and UN under the product on the invoice
         expect(invoice.body.SalesInvoiceLines[1].Notes).toBe('CAS 64-17-5 · UN 1170 · ADR 3');
+    });
+
+    it('leaves a barcode with letters out of a new article (Exact only takes digits)', () => {
+        const item = (barcode) => itemFromShopify({ variant: { barcode }, fields: {} }, { sku: 'LD1019', unitPriceNet: 100 });
+        expect(item('LD-1019')).not.toHaveProperty('Barcode');
+        expect(item('')).not.toHaveProperty('Barcode');
+        expect(item(' 0012345678905 ').Barcode).toBe('0012345678905');
     });
 
     it('makes no article when the VAT code is missing, so nothing is made half', async () => {

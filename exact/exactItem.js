@@ -23,6 +23,14 @@ function text(value) {
     return raw;
 }
 
+// Exact only accepts digits as barcode and refuses the whole article otherwise.
+// Anything else is left out quietly: the shop often puts the SKU in the barcode field ("CGH094.1").
+// Not stripped: "CGH094.1" -> "0941" would be a wrong barcode.
+function exactBarcode(value) {
+    const raw = String(value ?? '').trim();
+    return /^\d{1,30}$/.test(raw) ? raw : '';
+}
+
 const KG = { GRAMS: 0.001, KILOGRAMS: 1, POUNDS: 0.45359237, OUNCES: 0.028349523 };
 
 // Pure: Shopify product details + invoice line -> the Exact article
@@ -52,7 +60,7 @@ export function itemFromShopify({ product, variant, fields }, { sku, unitPriceNe
         Unit: 'pc',
         StandardSalesPrice: unitPriceNet / 100,
         ...(itemGroupId ? { ItemGroup: itemGroupId } : {}),
-        ...(variant?.barcode ? { Barcode: String(variant.barcode).slice(0, 30) } : {}),
+        ...(exactBarcode(variant?.barcode) ? { Barcode: exactBarcode(variant.barcode) } : {}),
         ...(kilos ? { NetWeight: kilos, GrossWeight: kilos } : {}),
         ...(variant?.inventoryItem?.harmonizedSystemCode ? { StatisticalCode: variant.inventoryItem.harmonizedSystemCode } : {}),
     };
