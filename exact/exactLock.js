@@ -62,10 +62,13 @@ function tryTake(file) {
     try {
         holder = JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch {
-        // half-written or removed in between: try again next time
-        return false;
+        // Half-written or removed in between: try again next time. Still empty after STALE_MS (the process
+        // was killed right after making the file, e.g. by a container update): take it over, or nothing ever runs.
+        holder = null;
     }
-    if (Date.now() - Number(holder.at) > STALE_MS || !isAlive(holder.pid)) {
+    const age = holder ? Date.now() - Number(holder.at) : Date.now() - (fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
+    if (!holder && age <= STALE_MS) return false;
+    if (age > STALE_MS || !isAlive(holder.pid)) {
         fs.rmSync(file, { force: true });
         try {
             fs.writeFileSync(file, JSON.stringify({ pid: process.pid, at: Date.now() }), { flag: 'wx' });

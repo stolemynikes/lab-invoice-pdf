@@ -461,6 +461,16 @@ describe('Exact safety (review fixes)', () => {
             expect(await withExactLock(settings, async () => 'ok')).toBe('ok');
         });
 
+        it('takes over an empty lock file only once it is old (process killed right after making it)', async () => {
+            const settings = settingsIn();
+            fs.writeFileSync(lockPathFor(settings), '');
+            await expect(withExactLock(settings, async () => 'x')).rejects.toBeInstanceOf(ExactBusyError);
+            const old = new Date(Date.now() - 16 * 60 * 1000);
+            fs.utimesSync(lockPathFor(settings), old, old);
+            expect(await withExactLock(settings, async () => 'ok')).toBe('ok');
+            expect(fs.existsSync(lockPathFor(settings))).toBe(false);
+        });
+
         it('does not refresh the login again when another process just did', async () => {
             const settings = settingsIn();
             let refreshed = 0;
