@@ -184,6 +184,8 @@ describe('admin panel status and actions', () => {
 
     it('turns log lines into plain Dutch, and keeps them in the logbook', () => {
         expect(translateLine('Exact: invoice 26700010 for LD1011, e-mailed by Exact')).toEqual({ text: 'Factuur 26700010 voor LD1011 gemaakt en gemaild naar de klant.', level: 'ok' });
+        expect(translateLine('Customer account: session token refused (No customer is logged in)').level).toBe('ok');
+        expect(translateLine('Customer account: session token refused (Session token signature is wrong)').level).toBe('warn');
         expect(translateLine('  ⚠ LD1009: Exact refused the login (401).  (next try in 4 min)').text).toBe('LD1009: de koppeling met Exact werkt niet meer. Volgende poging over 4 minuten.');
         expect(reasonInDutch('not made in Exact: article LD-X does not exist in Exact')).toBe('artikel LD-X bestaat niet in Exact.');
 

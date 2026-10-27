@@ -64,7 +64,9 @@ export function translateLine(text) {
         [/^Exact: concept (invoice|credit note) made for (\S+)/, (m) => ({ text: `Concept${m[1] === 'invoice' ? 'factuur' : 'creditnota'} voor ${m[2]} klaargezet in Exact.`, level: 'ok' })],
         [/(\S+): (.*)\(next try in (\d+) min\)/, (m) => ({ text: `${m[1]}: ${reasonInDutch(m[2])} Volgende poging over ${m[3]} minuten.`, level: 'bad' })],
         [/^PDF of (\d+) \((\S+)\) not saved/, (m) => ({ text: `PDF van ${m[1]} (${m[2]}) staat nog niet op de NAS. Wordt opnieuw geprobeerd.`, level: 'warn' })],
-        [/^Customer account: session token refused/, () => ({ text: 'Factuurknop in de webshop: toegang geweigerd. Kloppen de Shopify-sleutels?', level: 'warn' })],
+        // A shop admin looking at a customer's order has no customer login: refused on purpose, nothing wrong
+        [/^Customer account: session token refused \(No customer is logged in\)/, () => ({ text: 'Factuurknop bekeken zonder ingelogde klant (bijvoorbeeld door een beheerder). Geen factuur getoond, dat is goed zo.', level: 'ok' })],
+        [/^Customer account: session token refused/,() => ({ text: 'Factuurknop in de webshop: toegang geweigerd. Kloppen de Shopify-sleutels?', level: 'warn' })],
         [/^Exact catch-up could not reach Shopify or Exact/, () => ({ text: 'Shopify of Exact was even niet bereikbaar. De volgende ronde probeert het opnieuw.', level: 'warn' })],
         [/^App is listening/, () => ({ text: 'App gestart.', level: 'ok' })],
         [/^Invoices are made by Exact.*TEST ORDERS ONLY/, () => ({ text: 'Facturen via Exact, alleen voor testorders.', level: 'ok' })],
