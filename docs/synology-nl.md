@@ -112,8 +112,9 @@ Klanten zien het adres alleen even bij het downloaden van een factuur.
 7. Oude tunnel weg en de nieuwe starten (SSH):
    ```
    cd /volume1/docker/factuur-app
-   sudo docker rm -f factuur-tunnel
-   sudo docker compose -p factuur-app up -d --no-build
+   sudo /usr/local/bin/docker rm -f factuur-tunnel
+   sudo /usr/local/bin/docker compose -p factuur-app rm -s -f factuur-app
+   sudo /usr/local/bin/docker compose -p factuur-app up -d --no-build
    ```
 8. **Tailscale → Machines**: daar staat nu **facturen**. Klik op **…** → **Disable key expiry**. Anders valt hij na
    een half jaar uit.
