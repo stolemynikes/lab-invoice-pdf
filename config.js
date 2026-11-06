@@ -63,6 +63,8 @@ export const exact = {
     journal: env('EXACT_JOURNAL', '70'),
     paymentCondition: env('EXACT_PAYMENT_CONDITION', 'WS'),
     shippingItem: env('EXACT_SHIPPING_ITEM', 'VERZENDING'),
+    // Order lines without a SKU (custom items added by hand in Shopify) are booked on this article
+    noSkuItem: env('EXACT_NO_SKU_ITEM', 'DIVERSEN'),
     // Shopify products that are not in Exact yet are made as new articles (with CAS, UN number etc.)
     createItems: flag(process.env.EXACT_CREATE_ITEMS, true),
     sendEmail: flag(process.env.EXACT_SEND_EMAIL, true),

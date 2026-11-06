@@ -171,6 +171,16 @@ describe('Exact invoice for a paid order', () => {
         expect(processed.body).toEqual({ InvoiceID: INVOICE, InvoiceDate: '2026-10-07', SendEmailToCustomer: true, EmailLayout: 'layout-mail' });
     });
 
+    it('books an order line without SKU (a custom item) on the no-SKU article', async () => {
+        const exact = fakeInvoicing({ items: { ...ITEMS, DIVERSEN: 'item-9' } });
+        exact.settings.noSkuItem = 'DIVERSEN';
+        const order = paidOrder();
+        order.line_items[1] = { ...order.line_items[1], sku: '', product_id: null, variant_id: null };
+        expect((await run(exact, order)).status).toBe('invoiced');
+        const invoice = exact.calls.find((c) => c.url.endsWith('/salesinvoice/SalesInvoices'));
+        expect(invoice.body.SalesInvoiceLines[1].Item).toBe('item-9');
+    });
+
     it('makes a missing article from the Shopify product, with CAS and safety data, and then the invoice', async () => {
         const exact = fakeInvoicing({ items: { 'BKR-250': 'item-1', VERZENDING: 'item-3' } });
         const routed = exact.settings.fetch;

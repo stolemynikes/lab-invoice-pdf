@@ -19,12 +19,12 @@ export function refundReference(order, refund) {
 }
 
 // Credit lines for Exact: negative quantities, prices as the customer saw them
-export function exactCreditLines(order, creditData, { itemIds, vatCodes, shippingItem, allowZeroForTest }) {
+export function exactCreditLines(order, creditData, { itemIds, vatCodes, shippingItem, noSkuItem, allowZeroForTest }) {
     const included = Boolean(order.taxes_included);
     const problems = [];
     const lines = creditData.lines.map((line) => {
         const isShipping = !line.sku && /^Shipping/.test(line.description);
-        const itemCode = line.sku || (isShipping ? shippingItem : null);
+        const itemCode = line.sku || (isShipping ? shippingItem : noSkuItem);
         const item = itemCode ? itemIds.get(itemCode) : null;
         if (!item) problems.push(itemCode ? `article ${itemCode} does not exist in Exact` : `"${line.description}" cannot be credited automatically, make this credit note by hand`);
         const vatCode = vatCodeForLine(vatCodes, creditData, line, { included, allowZeroForTest }, problems);
@@ -66,11 +66,12 @@ export async function creditRefundsInExact(order, { settings, seller, invoiceSet
         if (!credit) {
             if (settings.sendEmail) await findEmailLayout(settings, cache);
             cache.vatCodes ||= await get(settings, `${base}/vat/VATCodes?$select=Code,Description,Percentage,Type`);
-            const itemIds = await lookupItemIds(settings, [...creditData.lines.map((line) => line.sku), settings.shippingItem]);
+            const itemIds = await lookupItemIds(settings, [...creditData.lines.map((line) => line.sku), settings.shippingItem, settings.noSkuItem]);
             const { lines, problems } = exactCreditLines(order, creditData, {
                 itemIds,
                 vatCodes: cache.vatCodes,
                 shippingItem: settings.shippingItem,
+                noSkuItem: settings.noSkuItem,
                 allowZeroForTest: Boolean(order.test),
             });
             if (problems.length) throw new Error(`credit note for refund ${refund.id} not made in Exact: ${problems.join('; ')}`);

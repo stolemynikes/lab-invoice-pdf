@@ -246,7 +246,7 @@ With `INVOICE_MODE=exact` the app does not make its own PDF invoices. For every 
 What happens per paid order:
 
 1. **Never twice:** if Exact already has an invoice with the order number in *Uw ref.*, nothing new is made.
-2. **Articles and VAT codes:** every product is looked up in Exact by its SKU (= article code), shipping costs use the article `VERZENDING` (`EXACT_SHIPPING_ITEM`). The VAT code follows country and rate (`exact/exactVatCodes.js`, a proposal until the accountant has confirmed it). If an article or VAT code is missing, **nothing** is made and the reason is shown.
+2. **Articles and VAT codes:** every product is looked up in Exact by its SKU (= article code), shipping costs use the article `VERZENDING` (`EXACT_SHIPPING_ITEM`), and order lines without a SKU (custom items added by hand) the article `DIVERSEN` (`EXACT_NO_SKU_ITEM`), which must exist in Exact. The VAT code follows country and rate (`exact/exactVatCodes.js`, a proposal until the accountant has confirmed it). If an article or VAT code is missing, **nothing** is made and the reason is shown.
 3. **Customer:** found by VAT number (business) or e-mail address, otherwise created. It always gets a **contact person with the e-mail address**, because Exact e-mails invoices to the contact person.
 4. **Concept invoice** with invoice date = payment date. Its total must be exactly what the customer paid in Shopify, otherwise it stays a concept for you to check.
 5. **Processing:** Exact gives the number, books it in journal 70 (`EXACT_JOURNAL`) and e-mails it (`EXACT_SEND_EMAIL`).

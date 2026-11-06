@@ -49,7 +49,7 @@ export function isPaid(order) {
 }
 
 // The invoice lines for Exact, from the same invoice data the PDF invoices use (amounts and VAT from Shopify)
-export function exactLines(order, invoiceData, { itemIds, vatCodes, shippingItem, allowZeroForTest }) {
+export function exactLines(order, invoiceData, { itemIds, vatCodes, shippingItem, noSkuItem, allowZeroForTest }) {
     const products = order.line_items.filter((item) => item.quantity > 0);
     const productCount = products.length;
     const included = Boolean(order.taxes_included);
@@ -63,7 +63,7 @@ export function exactLines(order, invoiceData, { itemIds, vatCodes, shippingItem
         const shipping = order.shipping_lines?.[index - productCount];
         const name = isShipping ? 'Shipping & handling' : product?.title || line.description;
         const note = isShipping ? shipping?.title || '' : product?.variant_title || '';
-        const itemCode = isShipping ? shippingItem : line.sku;
+        const itemCode = isShipping ? shippingItem : line.sku || noSkuItem;
         const item = itemCode ? itemIds.get(itemCode) : null;
         if (!item) problems.push(itemCode ? `article ${itemCode} does not exist in Exact` : `"${line.description}" has no SKU`);
         const vatCode = vatCodeForLine(vatCodes, invoiceData, line, { included, allowZeroForTest }, problems);
@@ -144,7 +144,7 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
     if (!invoice) {
         // 2. Articles and VAT codes
         cache.vatCodes ||= await get(settings, `${base}/vat/VATCodes?$select=Code,Description,Percentage,Type`);
-        const itemIds = await lookupItemIds(settings, [...order.line_items.map((item) => item.sku), settings.shippingItem]);
+        const itemIds = await lookupItemIds(settings, [...order.line_items.map((item) => item.sku), settings.shippingItem, settings.noSkuItem]);
         // Products that are only in Shopify yet: made as new Exact articles, but only after every other check passed.
         // One per SKU, also when two order lines share a SKU.
         const toCreate = [];
@@ -160,6 +160,7 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
             itemIds,
             vatCodes: cache.vatCodes,
             shippingItem: settings.shippingItem,
+            noSkuItem: settings.noSkuItem,
             allowZeroForTest: Boolean(order.test),
         });
         if (problems.length) throw new Error(`not made in Exact: ${problems.join('; ')}`);
