@@ -9,6 +9,8 @@
 #   ngrok       fixed address: free https://<name>.ngrok-free.app, or your own subdomain via a CNAME at your host
 #               (needs NGROK_AUTHTOKEN and NGROK_DOMAIN in .env)
 #   cloudflare  fixed address on a domain that is managed by Cloudflare (needs CLOUDFLARE_TUNNEL_TOKEN in .env)
+#   tailscale   fixed address https://facturen.<tailnet>.ts.net through Tailscale Funnel, free
+#               (needs TAILSCALE_AUTHKEY in .env the first time, and tailscale-serve.json next to this file)
 # Leave it empty for no tunnel at all (the app still makes invoices; only the customer account buttons need a tunnel).
 # Changing tunnel = change COMPOSE_PROFILES (+ its token) in .env and recreate the project. No code changes.
 
@@ -79,6 +81,30 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - factuur-app
+    networks:
+      - intern
+
+  # Fixed address through Tailscale Funnel: its own machine "facturen" in the tailnet, which passes only
+  # https on port 443 on to the app (tailscale-serve.json). The login is kept in ./tailscale, so the name
+  # and address stay the same after a restart; without it every restart would make "facturen-1", "-2"...
+  tunnel-tailscale:
+    profiles: ["tailscale"]
+    image: tailscale/tailscale:latest
+    container_name: factuur-tunnel
+    hostname: ${TAILSCALE_HOSTNAME:-facturen}
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY:-}
+      TS_HOSTNAME: ${TAILSCALE_HOSTNAME:-facturen}
+      TS_STATE_DIR: /var/lib/tailscale
+      # No network device needed on the NAS
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ./tailscale:/var/lib/tailscale
+      - ./tailscale-serve.json:/config/serve.json:ro
     depends_on:
       - factuur-app
     networks:

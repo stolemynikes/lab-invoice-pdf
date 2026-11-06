@@ -69,6 +69,7 @@ Welke tunnel de app bereikbaar maakt, kies je in `.env` met **`COMPOSE_PROFILES`
 | `quick` | willekeurig `https://….trycloudflare.com`, **verandert na elke herstart** (alleen om te testen) | niets |
 | `ngrok` | **vast**: gratis `https://<naam>.ngrok-free.app`, of je eigen subdomein (betaald plan + CNAME bij je host, bv. Hostnet) | `NGROK_AUTHTOKEN`, `NGROK_DOMAIN` |
 | `cloudflare` | **vast**, op een domein dat bij Cloudflare staat | `CLOUDFLARE_TUNNEL_TOKEN` |
+| `tailscale` | **vast** en gratis: `https://facturen.<jullie tailnet>.ts.net` (Tailscale Funnel) | `TAILSCALE_AUTHKEY` (alleen de eerste keer), het bestand `tailscale-serve.json` |
 
 Zet daarbij `PUBLIC_URL=auto` (werkt met elke tunnel). Na het wisselen: Project → **Stoppen → Action → Clean → Starten**.
 Het adres staat in het **Logboek van `factuur-tunnel`**. Bij een vast adres zet je dat één keer in de Shopify-extensies
@@ -80,6 +81,46 @@ naam `facturen`, waarde die CNAME. Website en e-mail veranderen daar niet door.
 
 > Ziet Container Manager de keuze niet (er start geen `factuur-tunnel`)? Haal dan in `docker-compose.yml` bij de gekozen
 > tunnel de regel `profiles: [...]` weg.
+
+### Tailscale Funnel (gratis, vast adres, niets open in de router)
+
+Tailscale is ons privénetwerk. **Funnel** zet daar één ding openbaar: de facturen-app, alleen via https.
+Er komt een eigen "apparaat" **facturen** in Tailscale bij (de container `factuur-tunnel`); DSM en de rest van de NAS blijven dicht.
+Klanten zien het adres alleen even bij het downloaden van een factuur.
+
+**In Tailscale (login.tailscale.com, eenmalig):**
+
+1. **DNS** (bovenaan) → zet **MagicDNS** aan als dat nog niet zo is → scroll naar **HTTPS Certificates** → **Enable HTTPS**.
+2. **Access controls** → kijk of in het beleid een regel `"nodeAttrs"` met `"funnel"` staat. Zo niet: klik bovenaan op
+   **Funnel** (of voeg het blok toe dat Tailscale voorstelt) en **Save**.
+3. **Settings** → **Keys** → **Generate auth key**. Laat **Reusable** en **Ephemeral** uit, klik **Generate key** en kopieer de
+   sleutel (begint met `tskey-auth-`). **Deel hem met niemand.** Hij is maar één keer nodig.
+
+**Op de NAS:**
+
+4. Zet het bestand **`tailscale-serve.json`** uit deze repository in **docker** → **factuur-app** (naast `docker-compose.yml`),
+   samen met de nieuwe `docker-compose.yml`.
+5. Maak in die map een lege map **`tailscale`** (File Station → Maken → Map maken). Hier bewaart Tailscale zijn login.
+6. Pas `.env` aan:
+   ```
+   COMPOSE_PROFILES=tailscale
+   TAILSCALE_AUTHKEY=tskey-auth-...
+   TAILSCALE_HOSTNAME=facturen
+   PUBLIC_URL=https://facturen.<jullie tailnet>.ts.net
+   ```
+   (De tailnet-naam staat in Tailscale onder **DNS**, bijvoorbeeld `tailc538ad.ts.net`.)
+7. Oude tunnel weg en de nieuwe starten (SSH):
+   ```
+   cd /volume1/docker/factuur-app
+   sudo docker rm -f factuur-tunnel
+   sudo docker compose -p factuur-app up -d --no-build
+   ```
+8. **Tailscale → Machines**: daar staat nu **facturen**. Klik op **…** → **Disable key expiry**. Anders valt hij na
+   een half jaar uit.
+9. Haal de sleutel uit `.env` weg (`TAILSCALE_AUTHKEY=`): de login staat nu in de map `tailscale`.
+
+Controleer: open `https://facturen.<jullie tailnet>.ts.net` op je **telefoon zonder Tailscale** (wifi uit) →
+**Invoice generator is running**. Zet dat adres één keer in de Shopify-extensies en deploy (zie hierboven).
 
 ### Cloudflare Tunnel (alleen als je domein bij Cloudflare staat)
 

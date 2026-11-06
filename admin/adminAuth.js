@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 //   the panel talks to the app directly inside the NAS, never via the internet.
 // - Every refusal gets the same answer, so nobody can find out why.
 
-const PROXY_HEADERS = ['x-forwarded-for', 'cf-connecting-ip', 'x-real-ip', 'forwarded', 'cf-ray', 'ngrok-trace-id'];
+const PROXY_HEADERS = ['x-forwarded-for', 'cf-connecting-ip', 'x-real-ip', 'forwarded', 'cf-ray', 'ngrok-trace-id', 'tailscale-funnel-request', 'x-forwarded-proto'];
 
 export function adminGuard(adminKey) {
     const expected = Buffer.from(`Bearer ${adminKey || ''}`);

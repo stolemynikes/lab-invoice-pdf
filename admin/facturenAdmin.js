@@ -163,8 +163,9 @@ export function createFacturenAdmin({ store, exact, invoiceSettings, runNow = ()
             : { id: 'folder', level: 'bad', label: 'Map met facturen — kan niet schrijven', detail: 'Geef de app schrijfrechten op de map facturen (zie de handleiding).' });
 
         const tunnel = String(env.COMPOSE_PROFILES || '').split(',').map((p) => p.trim());
-        if (tunnel.includes('ngrok') || tunnel.includes('cloudflare')) {
-            list.push({ id: 'reach', level: 'ok', label: 'Factuurknop in de webshop — vast adres', detail: env.NGROK_DOMAIN ? `Bereikbaar via ${env.NGROK_DOMAIN}.` : 'Via een vaste tunnel.' });
+        if (tunnel.includes('ngrok') || tunnel.includes('cloudflare') || tunnel.includes('tailscale')) {
+            const via = tunnel.includes('tailscale') ? `Via Tailscale Funnel (${env.TAILSCALE_HOSTNAME || 'facturen'}).` : env.NGROK_DOMAIN ? `Bereikbaar via ${env.NGROK_DOMAIN}.` : 'Via een vaste tunnel.';
+            list.push({ id: 'reach', level: 'ok', label: 'Factuurknop in de webshop — vast adres', detail: via });
         } else if (tunnel.includes('quick')) {
             list.push({ id: 'reach', level: 'warn', label: 'Factuurknop in de webshop — werkt, maar tijdelijk', detail: 'Het internetadres verandert als de NAS herstart. Dan werkt de knop niet tot het adres in de extensies is aangepast.' });
         } else {

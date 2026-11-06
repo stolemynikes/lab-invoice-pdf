@@ -50,7 +50,7 @@ describe('admin panel access', () => {
         try {
             expect((await ask('GET', '/internal/admin/status')).status).toBe(404);
             expect((await ask('GET', '/internal/admin/status', { headers: { authorization: 'Bearer wrong' } })).status).toBe(404);
-            for (const header of ['x-forwarded-for', 'cf-connecting-ip', 'ngrok-trace-id']) {
+            for (const header of ['x-forwarded-for', 'cf-connecting-ip', 'ngrok-trace-id', 'tailscale-funnel-request']) {
                 expect((await ask('GET', '/internal/admin/status', { headers: { ...auth, [header]: '1.2.3.4' } })).status).toBe(404);
             }
             expect((await ask('GET', '/internal/admin/status', { headers: auth })).status).toBe(200);
