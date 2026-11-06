@@ -155,6 +155,9 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
                 itemIds.set(item.sku, `new:${item.sku}`);
             }
         }
+        // The article for lines without a SKU is not a Shopify product: made as a plain article when it is missing
+        const needsNoSkuItem = settings.createItems && settings.noSkuItem && !itemIds.has(settings.noSkuItem) && order.line_items.some((item) => item.quantity > 0 && !item.sku);
+        if (needsNoSkuItem) itemIds.set(settings.noSkuItem, `new:${settings.noSkuItem}`);
 
         const { lines, problems } = exactLines(order, invoiceData, {
             itemIds,
@@ -182,7 +185,14 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
             const details = productDetails.get(item.variant_id) || (await fetchProduct(item.product_id, item.variant_id));
             const id = await createItemFromShopify(settings, details, line, cache);
             for (const exactLine of lines) if (exactLine.Item === `new:${item.sku}`) exactLine.Item = id;
-            log(`Exact: new article ${item.sku} made (${details.product?.title ?? ''})`);        }
+            log(`Exact: new article ${item.sku} made (${details.product?.title ?? ''})`);
+        }
+        if (needsNoSkuItem) {
+            const code = settings.noSkuItem;
+            const created = await write(settings, 'POST', `${base}/logistics/Items`, { Code: code, Description: 'Diversen', IsSalesItem: true, IsStockItem: false, Unit: 'pc' });
+            for (const exactLine of lines) if (exactLine.Item === `new:${code}`) exactLine.Item = created.ID;
+            log(`Exact: new article ${code} made (Diversen)`);
+        }
 
         // 3. Customer with contact person
         const customer = await ensureCustomer(settings, customerForExact(order, invoiceData));

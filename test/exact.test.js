@@ -181,6 +181,25 @@ describe('Exact invoice for a paid order', () => {
         expect(invoice.body.SalesInvoiceLines[1].Item).toBe('item-9');
     });
 
+    it('makes the no-SKU article itself when it is missing in Exact', async () => {
+        const exact = fakeInvoicing();
+        const routed = exact.settings.fetch;
+        Object.assign(exact.settings, { noSkuItem: 'DIVERSEN', createItems: true });
+        exact.settings.fetch = async (url, options = {}) => {
+            if (options.method === 'POST' && decodeURIComponent(String(url)).includes('/logistics/Items')) {
+                exact.calls.push({ method: 'POST', url: String(url), body: JSON.parse(options.body) });
+                return { ok: true, status: 200, json: async () => ({ d: { ID: 'item-new' } }), text: async () => '' };
+            }
+            return routed(url, options);
+        };
+        const order = paidOrder();
+        order.line_items[1] = { ...order.line_items[1], sku: '', product_id: null, variant_id: null };
+        expect((await run(exact, order)).status).toBe('invoiced');
+        expect(exact.calls.find((c) => c.url.endsWith('/logistics/Items')).body).toEqual({ Code: 'DIVERSEN', Description: 'Diversen', IsSalesItem: true, IsStockItem: false, Unit: 'pc' });
+        const invoice = exact.calls.find((c) => c.url.endsWith('/salesinvoice/SalesInvoices'));
+        expect(invoice.body.SalesInvoiceLines[1].Item).toBe('item-new');
+    });
+
     it('makes a missing article from the Shopify product, with CAS and safety data, and then the invoice', async () => {
         const exact = fakeInvoicing({ items: { 'BKR-250': 'item-1', VERZENDING: 'item-3' } });
         const routed = exact.settings.fetch;
