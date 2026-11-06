@@ -94,7 +94,7 @@ export function itemGroupFor(product) {
 }
 
 // Creates the article in Exact and returns its id
-export async function createItemFromShopify(settings, details, line, cache = {}) {
+export async function createItemFromShopify(settings, details, line, cache = {}, log = () => {}) {
     const base = `/api/v1/${settings.division}`;
     const groupCode = itemGroupFor(details.product);
     cache.itemGroups ||= new Map();
@@ -103,6 +103,27 @@ export async function createItemFromShopify(settings, details, line, cache = {})
         cache.itemGroups.set(groupCode, group?.ID ?? null);
     }
     const item = itemFromShopify(details, { sku: line.sku, unitPriceNet: line.unitPriceNet, itemGroupId: cache.itemGroups.get(groupCode) });
-    const created = await write(settings, 'POST', `${base}/logistics/Items`, item);
+    try {
+        const created = await write(settings, 'POST', `${base}/logistics/Items`, item);
+        return created.ID;
+    } catch (error) {
+        // Exact refused one of the extra fields (weight, HS code, a free field...): make the article with the
+        // basics only, so the invoice is not blocked. Login problems and the like are passed on.
+        if (!/^Exact refused POST/.test(error.message)) throw error;
+        log(`Exact: article ${line.sku} made without extra data, Exact refused it: ${error.message}`);
+        return createPlainItem(settings, line.sku, item.Description, { isStockItem: true, itemGroupId: item.ItemGroup });
+    }
+}
+
+// An article with only the basics: for lines without a SKU, shipping, or a product that is no longer in Shopify
+export async function createPlainItem(settings, code, description, { isStockItem = false, itemGroupId = null } = {}) {
+    const created = await write(settings, 'POST', `/api/v1/${settings.division}/logistics/Items`, {
+        Code: code,
+        Description: String(description || code).slice(0, 60),
+        IsSalesItem: true,
+        IsStockItem: isStockItem,
+        Unit: 'pc',
+        ...(itemGroupId ? { ItemGroup: itemGroupId } : {}),
+    });
     return created.ID;
 }

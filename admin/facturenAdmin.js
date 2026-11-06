@@ -60,6 +60,7 @@ export function translateLine(text) {
         [/^Exact: invoice (\d+) for ([^\s,]+)(, e-mailed by Exact)?/, (m) => ({ text: `Factuur ${m[1]} voor ${m[2]} gemaakt${m[3] ? ' en gemaild naar de klant' : ''}.`, level: 'ok' })],
         [/^Exact: credit note (\d+) for (\S+) \(invoice (\d+)\)/, (m) => ({ text: `Creditnota ${m[1]} voor ${m[2]} gemaakt (bij factuur ${m[3]}).`, level: 'ok' })],
         [/^Exact: PDF saved: (.+)$/, (m) => ({ text: `PDF opgeslagen: ${m[1].replace(/^\/facturen\//, 'facturen/')}`, level: 'ok' })],
+        [/^Exact: article (\S+) made without extra data/, (m) => ({ text: `Artikel ${m[1]} in Exact gemaakt zonder extra gegevens (gewicht, HS-code, vrije velden): Exact weigerde er één. Vul ze eventueel zelf aan in Exact.`, level: 'warn' })],
         [/^Exact: new article (\S+) made \((.*)\)/, (m) => ({ text: `Nieuw artikel in Exact gemaakt: ${m[1]} (${m[2]}).`, level: 'ok' })],
         [/^Exact: concept (invoice|credit note) made for (\S+)/, (m) => ({ text: `Concept${m[1] === 'invoice' ? 'factuur' : 'creditnota'} voor ${m[2]} klaargezet in Exact.`, level: 'ok' })],
         [/(\S+): (.*)\(next try in (\d+) min\)/, (m) => ({ text: `${m[1]}: ${reasonInDutch(m[2])} Volgende poging over ${m[3]} minuten.`, level: 'bad' })],

@@ -181,6 +181,30 @@ describe('Exact invoice for a paid order', () => {
         expect(invoice.body.SalesInvoiceLines[1].Item).toBe('item-9');
     });
 
+    it('makes the article with only the basics when Exact refuses an extra field, so the invoice still goes', async () => {
+        const exact = fakeInvoicing({ items: { 'BKR-250': 'item-1', VERZENDING: 'item-3' } });
+        const routed = exact.settings.fetch;
+        exact.settings.createItems = true;
+        const posted = [];
+        exact.settings.fetch = async (url, options = {}) => {
+            if (options.method === 'POST' && decodeURIComponent(String(url)).includes('/logistics/Items')) {
+                const body = JSON.parse(options.body);
+                posted.push(body);
+                if (body.StatisticalCode) return { ok: false, status: 400, json: async () => ({}), text: async () => 'StatisticalCode: onbekend' };
+                return { ok: true, status: 200, json: async () => ({ d: { ID: 'item-basic' } }), text: async () => '' };
+            }
+            if (decodeURIComponent(String(url)).includes('/logistics/ItemGroups')) return { ok: true, status: 200, json: async () => ({ d: { results: [] } }), text: async () => '' };
+            return routed(url, options);
+        };
+        const fetchProduct = async () => ({ product: { title: 'Lab notebook' }, variant: { inventoryItem: { harmonizedSystemCode: 'XX' } }, fields: {} });
+        const order = { ...paidOrder(), line_items: paidOrder().line_items.map((item) => ({ ...item, product_id: 1, variant_id: 2 })) };
+        const logged = [];
+        const result = await invoiceOrderInExact(order, { settings: exact.settings, seller: { countryCode: 'NL' }, invoiceSettings, fetchProduct, log: (text) => logged.push(text) });
+        expect(result.status).toBe('invoiced');
+        expect(posted.map((body) => Boolean(body.StatisticalCode))).toEqual([true, false]);
+        expect(logged.some((text) => text.includes('made without extra data'))).toBe(true);
+    });
+
     it('makes the no-SKU article itself when it is missing in Exact', async () => {
         const exact = fakeInvoicing();
         const routed = exact.settings.fetch;

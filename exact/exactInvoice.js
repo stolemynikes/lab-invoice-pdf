@@ -1,7 +1,7 @@
 import { get, write, odataText } from './exactClient.js';
 import { customerFromOrder, ensureCustomer } from './exactCustomer.js';
 import { pickVatCode } from './exactVatCodes.js';
-import { createItemFromShopify, invoiceLineNote } from './exactItem.js';
+import { createItemFromShopify, createPlainItem, invoiceLineNote } from './exactItem.js';
 import { prepareInvoiceData } from '../invoice/createInvoice.js';
 import { formatMoney } from '../invoice/money.js';
 
@@ -148,16 +148,26 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
         // Products that are only in Shopify yet: made as new Exact articles, but only after every other check passed.
         // One per SKU, also when two order lines share a SKU.
         const toCreate = [];
-        if (settings.createItems && fetchProduct) {
+        // Articles that are not a Shopify product (anymore): made with only the basics
+        const plainToCreate = [];
+        const addPlain = (code, description) => {
+            if (!code || itemIds.has(code)) return;
+            plainToCreate.push({ code, description });
+            itemIds.set(code, `new:${code}`);
+        };
+        if (settings.createItems) {
             for (const item of order.line_items) {
-                if (item.quantity <= 0 || !item.sku || itemIds.has(item.sku) || !item.product_id || !item.variant_id) continue;
+                if (item.quantity <= 0 || !item.sku || itemIds.has(item.sku)) continue;
+                if (!fetchProduct || !item.product_id || !item.variant_id) {
+                    addPlain(item.sku, item.title);
+                    continue;
+                }
                 toCreate.push(item);
                 itemIds.set(item.sku, `new:${item.sku}`);
             }
+            if (order.line_items.some((item) => item.quantity > 0 && !item.sku)) addPlain(settings.noSkuItem, 'Diversen');
+            if (order.shipping_lines?.length) addPlain(settings.shippingItem, 'Verzendkosten');
         }
-        // The article for lines without a SKU is not a Shopify product: made as a plain article when it is missing
-        const needsNoSkuItem = settings.createItems && settings.noSkuItem && !itemIds.has(settings.noSkuItem) && order.line_items.some((item) => item.quantity > 0 && !item.sku);
-        if (needsNoSkuItem) itemIds.set(settings.noSkuItem, `new:${settings.noSkuItem}`);
 
         const { lines, problems } = exactLines(order, invoiceData, {
             itemIds,
@@ -183,15 +193,14 @@ export async function invoiceOrderInExact(order, { settings, seller, invoiceSett
         for (const item of toCreate) {
             const line = invoiceData.lines.find((invoiceLine) => invoiceLine.sku === item.sku);
             const details = productDetails.get(item.variant_id) || (await fetchProduct(item.product_id, item.variant_id));
-            const id = await createItemFromShopify(settings, details, line, cache);
+            const id = await createItemFromShopify(settings, details, line, cache, log);
             for (const exactLine of lines) if (exactLine.Item === `new:${item.sku}`) exactLine.Item = id;
             log(`Exact: new article ${item.sku} made (${details.product?.title ?? ''})`);
         }
-        if (needsNoSkuItem) {
-            const code = settings.noSkuItem;
-            const created = await write(settings, 'POST', `${base}/logistics/Items`, { Code: code, Description: 'Diversen', IsSalesItem: true, IsStockItem: false, Unit: 'pc' });
-            for (const exactLine of lines) if (exactLine.Item === `new:${code}`) exactLine.Item = created.ID;
-            log(`Exact: new article ${code} made (Diversen)`);
+        for (const { code, description } of plainToCreate) {
+            const id = await createPlainItem(settings, code, description);
+            for (const exactLine of lines) if (exactLine.Item === `new:${code}`) exactLine.Item = id;
+            log(`Exact: new article ${code} made (${description})`);
         }
 
         // 3. Customer with contact person
